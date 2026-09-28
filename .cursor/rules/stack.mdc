@@ -22,11 +22,13 @@ Do not introduce alternative libraries that overlap with these (e.g. no Redux, n
 - You **MUST ONLY** use `@supabase/ssr` for all authentication and session handling.
 - You **NEVER** import or use the deprecated `@supabase/auth-helpers-nextjs` package. If you see it in existing code, flag it for migration — do not extend it.
 - Cookie handling **MUST** always use the `getAll` and `setAll` methods (not `get`/`set`/`remove` per-cookie).
+- **`setAll` receives a second `headers` argument: `setAll(cookiesToSet, headers)`.** This carries `Cache-Control`/`Pragma` headers that `@supabase/ssr` generates whenever an auth cookie is written. You **MUST** forward these onto the outgoing response (`response.headers.set(key, value)` for each entry) anywhere `setAll` has access to a response — this is required in `proxy.ts` / server client usage inside Route Handlers. Omitting this can let a CDN or reverse proxy cache one user's session and serve it to another user. It's the single most common mistake when hand-writing this pattern from memory — always check the second argument exists before assuming an older, single-argument `setAll` signature.
+- In a Server Component, `cookieStore.set(...)` inside `setAll` will throw (Server Components can't write cookies). Wrap it in `try {} catch {}` and rely on `proxy.ts` to actually persist the refreshed session — do not let that error propagate.
 
 Reference pattern for browser client:
 
 ```typescript
-// utils/supabase/client.ts
+// lib/supabase/client.ts
 import { createBrowserClient } from '@supabase/ssr'
 
 export const createClient = () =>
@@ -39,7 +41,7 @@ export const createClient = () =>
 Reference pattern for server client (Route Handlers, Server Components, Server Actions):
 
 ```typescript
-// utils/supabase/server.ts
+// lib/supabase/server.ts
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -53,9 +55,14 @@ export const createClient = async () => {
       cookies: {
         getAll: () => cookieStore.getAll(),
         setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options),
-          )
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options),
+            )
+          } catch {
+            // Called from a Server Component — safe to ignore as long as
+            // proxy.ts is refreshing the session on every request.
+          }
         },
       },
     },
@@ -63,21 +70,35 @@ export const createClient = async () => {
 }
 ```
 
-Reference pattern for middleware session refresh — also `getAll`/`setAll` only:
+Reference pattern for session refresh in `proxy.ts` (Next.js 16+; this was `middleware.ts` with a `middleware` export prior to Next.js 16 — migrate with `npx @next/codemod@canary middleware-to-proxy .` if you find the old convention) — note the second `headers` argument on `setAll`, which **must** be forwarded to `response.headers`:
 
 ```typescript
-// middleware.ts / utils/supabase/middleware.ts
+// proxy.ts
+let response = NextResponse.next({ request })
+
 const supabase = createServerClient(url, anonKey, {
   cookies: {
     getAll: () => request.cookies.getAll(),
-    setAll: (cookiesToSet) => {
+    setAll: (cookiesToSet, headers) => {
       cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+
+      response = NextResponse.next({ request })
       cookiesToSet.forEach(({ name, value, options }) =>
         response.cookies.set(name, value, options),
+      )
+
+      // Required: forward cache-control headers so auth cookie writes are
+      // never cached by a CDN/reverse proxy.
+      Object.entries(headers).forEach(([key, value]) =>
+        response.headers.set(key, value),
       )
     },
   },
 })
+
+await supabase.auth.getUser()
+
+return response
 ```
 
 ## 3. Next.js Architecture
