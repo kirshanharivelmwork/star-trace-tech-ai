@@ -1,0 +1,136 @@
+---
+description: Master AI instruction set — tech stack, Supabase auth, Next.js architecture, AI SDK, and code style rules for this project
+alwaysApply: true
+---
+
+# Project Stack & Architecture Rules
+
+This is the master instruction set for this project. Follow these constraints strictly on every change. If a suggestion conflicts with this file, this file wins.
+
+## 1. Tech Stack
+
+- **Framework**: Next.js 15 (App Router only — no Pages Router)
+- **Database/Auth backend**: Supabase
+- **UI components**: shadcn/ui
+- **Styling**: Tailwind CSS
+- **AI**: Vercel AI SDK
+
+Do not introduce alternative libraries that overlap with these (e.g. no Redux, no styled-components, no Passport/NextAuth) without explicit user approval.
+
+## 2. Supabase Auth
+
+- You **MUST ONLY** use `@supabase/ssr` for all authentication and session handling.
+- You **NEVER** import or use the deprecated `@supabase/auth-helpers-nextjs` package. If you see it in existing code, flag it for migration — do not extend it.
+- Cookie handling **MUST** always use the `getAll` and `setAll` methods (not `get`/`set`/`remove` per-cookie).
+
+Reference pattern for browser client:
+
+```typescript
+// utils/supabase/client.ts
+import { createBrowserClient } from '@supabase/ssr'
+
+export const createClient = () =>
+  createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+```
+
+Reference pattern for server client (Route Handlers, Server Components, Server Actions):
+
+```typescript
+// utils/supabase/server.ts
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export const createClient = async () => {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options),
+          )
+        },
+      },
+    },
+  )
+}
+```
+
+Reference pattern for middleware session refresh — also `getAll`/`setAll` only:
+
+```typescript
+// middleware.ts / utils/supabase/middleware.ts
+const supabase = createServerClient(url, anonKey, {
+  cookies: {
+    getAll: () => request.cookies.getAll(),
+    setAll: (cookiesToSet) => {
+      cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+      cookiesToSet.forEach(({ name, value, options }) =>
+        response.cookies.set(name, value, options),
+      )
+    },
+  },
+})
+```
+
+## 3. Next.js Architecture
+
+- Strictly follow Next.js **App Router** conventions (`app/` directory, `layout.tsx`, `page.tsx`, route groups, etc.).
+- **Default to Server Components.** Do not add `'use client'` unless the component genuinely needs interactivity (state, effects, browser APIs, event handlers).
+- Push `'use client'` to the **leaves** of the component tree — the smallest possible interactive component. Never mark a whole page or layout as client just because one child needs it.
+- **All data mutations and form submissions MUST use Server Actions** (`'use server'`), not client-side `fetch` calls to API routes for mutations.
+- Route Handlers (`app/api/**/route.ts`) are reserved for cases that need a true HTTP endpoint — most notably AI streaming (see below) or third-party webhooks.
+
+## 4. AI Integration
+
+- Use the **Vercel AI SDK**: `ai` combined with a provider package such as `@ai-sdk/openai` or `@ai-sdk/anthropic`.
+- **All LLM calls MUST be routed through Next.js Route Handlers** (`app/api/.../route.ts`), never called directly from Server Actions or client components.
+- Use `streamText` for text/chat completions and `streamObject` for structured/JSON output. Prefer streaming responses over blocking calls.
+
+```typescript
+// app/api/chat/route.ts
+import { streamText } from 'ai'
+import { openai } from '@ai-sdk/openai'
+
+export async function POST(req: Request) {
+  const { messages } = await req.json()
+
+  const result = streamText({
+    model: openai('gpt-4o'),
+    messages,
+  })
+
+  return result.toDataStreamResponse()
+}
+```
+
+## 5. Code Style
+
+- **TypeScript with `strict: true`** in `tsconfig.json` — no `any` unless justified with a comment.
+- **Prefer early returns** over nested `if`/`else` to keep functions flat and readable.
+- **Components are arrow functions**, exported as **named exports** (no default exports for components).
+
+```typescript
+// ✅ GOOD
+export const UserCard = ({ user }: { user: User }) => {
+  if (!user) return null
+
+  return <div>{user.name}</div>
+}
+
+// ❌ BAD
+export default function UserCard({ user }: { user: User }) {
+  if (user) {
+    return <div>{user.name}</div>
+  } else {
+    return null
+  }
+}
+```
