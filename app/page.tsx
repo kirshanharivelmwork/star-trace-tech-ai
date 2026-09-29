@@ -2,6 +2,7 @@ import { Activity, DollarSign, TrendingUp, Users } from "lucide-react"
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { ChatPanel } from "@/components/dashboard/chat-panel"
+import { LeaseUploader } from "@/components/dashboard/lease-uploader"
 import { SiteHeader } from "@/components/dashboard/site-header"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -26,6 +27,8 @@ export default function Page() {
               <StatCard key={stat.label} {...stat} />
             ))}
           </div>
+
+          <LeaseUploader />
 
           <div id="assistant" className="min-h-0 flex-1">
             <ChatPanel />
