@@ -2,10 +2,10 @@ import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
 
-// Magic-link sign-in redirects here with a PKCE `code` param (see
-// UserMenu's `signInWithOtp` call). Exchanging it for a session sets the
-// auth cookies via lib/supabase/server.ts's `setAll`, then we redirect back
-// into the app.
+// Email-confirmation links (and any remaining PKCE `code` redirects) land
+// here after `signUp`. Exchanging the code for a session sets the auth
+// cookies via lib/supabase/server.ts's `setAll`, then we redirect into
+// the dashboard. Password sign-in does not use this route.
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get("code")
