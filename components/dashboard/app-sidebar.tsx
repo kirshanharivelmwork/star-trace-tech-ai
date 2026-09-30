@@ -7,6 +7,7 @@ import {
   Home,
   Landmark,
   MessageSquare,
+  Radar,
   Settings,
   Shield,
   Sparkles,
@@ -28,6 +29,7 @@ import {
 
 const navItems = [
   { title: "Overview", href: "/", icon: Home },
+  { title: "Enterprise", href: "/enterprise", icon: Radar },
   // Same-page anchor, not a route — app/page.tsx renders
   // <div id="assistant"> around the chat panel, so this actually works.
   { title: "Assistant", href: "/#assistant", icon: MessageSquare },

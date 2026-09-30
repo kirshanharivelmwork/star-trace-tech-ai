@@ -2,7 +2,7 @@ import { AlertTriangle } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { fetchNoticeAlerts } from "@/lib/enterprise/queries"
-import type { NoticePriority } from "@/lib/enterprise/types"
+import type { NoticeAlert, NoticePriority } from "@/lib/enterprise/types"
 import { createClient } from "@/lib/supabase/server"
 
 const PRIORITY_STYLES: Record<NoticePriority, string> = {
@@ -35,28 +35,29 @@ const daysCopy = (days: number | null) => {
   return `${days}d remaining`
 }
 
-export const NoticeWindowAlerts = async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+type NoticeWindowPanelProps = {
+  alerts: NoticeAlert[]
+  /** Days ahead to include. Omit to show every window. */
+  horizonDays?: number | null
+  limit?: number
+}
 
-  if (!user) {
-    return (
-      <Card className="border-zinc-800/80 bg-zinc-900/60 shadow-2xl backdrop-blur-xl">
-        <CardContent className="flex flex-col items-center gap-2 py-8 text-center text-sm text-zinc-400">
-          <AlertTriangle className="size-5 text-violet-300" />
-          <p>Sign in to see upcoming notice-window alerts.</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const alerts = await fetchNoticeAlerts(user.id)
-  const visible = alerts.filter(
-    (alert) => alert.daysUntil == null || alert.daysUntil <= 180
-  )
+export const NoticeWindowPanel = ({
+  alerts,
+  horizonDays = 180,
+  limit = 8,
+}: NoticeWindowPanelProps) => {
+  const visible =
+    horizonDays == null
+      ? alerts
+      : alerts.filter(
+          (alert) => alert.daysUntil == null || alert.daysUntil <= horizonDays
+        )
   const highPriority = visible.filter((alert) => alert.priority === "critical").length
+  const horizonCopy =
+    horizonDays == null
+      ? "All open notice windows"
+      : `Upcoming exercise / expiration notice deadlines`
 
   return (
     <Card className="border-zinc-800/80 bg-zinc-900/60 shadow-2xl backdrop-blur-xl">
@@ -65,9 +66,7 @@ export const NoticeWindowAlerts = async () => {
           <CardTitle className="text-sm font-medium tracking-tight text-zinc-50">
             Notice windows
           </CardTitle>
-          <p className="text-xs text-zinc-400">
-            Upcoming exercise / expiration notice deadlines
-          </p>
+          <p className="text-xs text-zinc-400">{horizonCopy}</p>
         </div>
         {highPriority > 0 ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/40 bg-red-500/15 px-2.5 py-0.5 text-[11px] font-medium tracking-wide text-red-200 shadow-[0_0_16px_-4px_rgba(239,68,68,0.8)]">
@@ -79,11 +78,13 @@ export const NoticeWindowAlerts = async () => {
       <CardContent>
         {visible.length === 0 ? (
           <p className="py-4 text-sm text-zinc-400">
-            No notice windows in the next 180 days.
+            {horizonDays == null
+              ? "No notice windows on file for this portfolio."
+              : `No notice windows in the next ${horizonDays} days.`}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {visible.slice(0, 8).map((alert) => (
+            {visible.slice(0, limit).map((alert) => (
               <li
                 key={alert.id}
                 className="flex items-start justify-between gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-2.5"
@@ -115,4 +116,25 @@ export const NoticeWindowAlerts = async () => {
       </CardContent>
     </Card>
   )
+}
+
+export const NoticeWindowAlerts = async () => {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return (
+      <Card className="border-zinc-800/80 bg-zinc-900/60 shadow-2xl backdrop-blur-xl">
+        <CardContent className="flex flex-col items-center gap-2 py-8 text-center text-sm text-zinc-400">
+          <AlertTriangle className="size-5 text-violet-300" />
+          <p>Sign in to see upcoming notice-window alerts.</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const alerts = await fetchNoticeAlerts(user.id)
+  return <NoticeWindowPanel alerts={alerts} />
 }
