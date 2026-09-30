@@ -108,14 +108,16 @@ export const PortfolioAnalytics = async () => {
         {cards.map((card) => (
           <Card key={card.label}>
             <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-normal text-muted-foreground">
+              <CardTitle className="text-xs font-medium tracking-widest text-zinc-500 uppercase">
                 {card.label}
               </CardTitle>
-              <card.icon className="size-4 text-muted-foreground" />
+              <card.icon className="size-4 text-violet-300" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-semibold">{card.value}</div>
-              <p className="text-xs text-muted-foreground">{card.change}</p>
+              <div className="text-3xl font-semibold tracking-tight text-zinc-50">
+                {card.value}
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">{card.change}</p>
             </CardContent>
           </Card>
         ))}
@@ -133,34 +135,37 @@ export const PortfolioAnalytics = async () => {
               No upcoming expirations with a parseable date yet.
             </p>
           ) : (
-            <div className="overflow-hidden rounded-lg border">
+            <div className="overflow-hidden rounded-2xl border border-zinc-800/80">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-muted/40 text-left text-xs text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">Lease</th>
-                    <th className="px-3 py-2 font-medium">Expiration</th>
-                    <th className="px-3 py-2 font-medium">Days left</th>
-                    <th className="px-3 py-2 font-medium">Rent review</th>
+                  <tr className="bg-zinc-950/50 text-left text-[11px] tracking-widest text-zinc-500 uppercase">
+                    <th className="px-4 py-3 font-medium">Lease</th>
+                    <th className="px-4 py-3 font-medium">Expiration</th>
+                    <th className="px-4 py-3 font-medium">Days left</th>
+                    <th className="px-4 py-3 font-medium">Rent review</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-zinc-800/80">
                   {metrics.criticalDates.map((entry) => (
-                    <tr key={entry.id}>
-                      <td className="px-3 py-2">
-                        <div className="font-medium text-foreground">
+                    <tr
+                      key={entry.id}
+                      className="transition-colors hover:bg-violet-500/5"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium tracking-tight text-zinc-50">
                           {entry.tenantName ?? entry.fileName}
                         </div>
-                        <div className="truncate text-xs text-muted-foreground">
+                        <div className="truncate text-xs text-zinc-500">
                           {entry.fileName}
                         </div>
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-foreground">
+                      <td className="px-4 py-3 whitespace-nowrap text-zinc-200">
                         {formatDate(entry.expirationDate)}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-foreground">
+                      <td className="px-4 py-3 whitespace-nowrap text-zinc-200">
                         {daysUntil(entry.expirationDate)}
                       </td>
-                      <td className="max-w-[16rem] truncate px-3 py-2 text-muted-foreground">
+                      <td className="max-w-[16rem] truncate px-4 py-3 text-zinc-500">
                         {entry.rentReviewDetails ?? "—"}
                       </td>
                     </tr>

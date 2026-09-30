@@ -86,7 +86,7 @@ export const NotificationBell = () => {
       >
         <Bell className="size-4" />
         {count > 0 ? (
-          <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium leading-none text-white">
+          <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-fuchsia-500 text-[10px] font-medium leading-none text-white shadow-[0_0_12px_rgba(217,70,239,0.8)]">
             {count > 9 ? "9+" : count}
           </span>
         ) : null}

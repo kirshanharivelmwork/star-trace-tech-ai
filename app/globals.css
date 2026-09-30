@@ -71,7 +71,7 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
+    --radius: 1rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -82,38 +82,54 @@
     --sidebar-ring: oklch(0.708 0 0);
 }
 
+/*
+ * Obsidian fintech theme: deep zinc-950/near-black surfaces with a
+ * violet/magenta accent (used for --primary, --ring, focus states, active
+ * nav items, and chart series 1–2). Deliberately keeps semantic status
+ * colors (destructive/red, and the amber/emerald/zinc risk-breakdown
+ * colors used in app/analytics/page.tsx and components/dashboard/
+ * portfolio-analytics.tsx) untouched — those carry meaning (critical /
+ * healthy / needs-review) that shouldn't be recolored to match the brand
+ * accent.
+ */
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
+    --background: oklch(0.12 0.006 285.8); /* matte obsidian, slightly below zinc-950 */
+    --foreground: oklch(0.99 0 0);
+    --card: oklch(0.205 0.008 286);
+    --card-foreground: oklch(0.99 0 0);
+    --popover: oklch(0.18 0.008 286);
+    --popover-foreground: oklch(0.99 0 0);
+    --primary: oklch(0.62 0.26 293);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.26 0.01 286);
+    --secondary-foreground: oklch(0.99 0 0);
+    --muted: oklch(0.2 0.008 286);
+    --muted-foreground: oklch(0.68 0.02 286); /* zinc-400/500 */
+    --accent: oklch(0.26 0.02 300);
+    --accent-foreground: oklch(0.99 0 0);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --border: oklch(0.72 0.02 286 / 22%);
+    --input: oklch(1 0 0 / 10%);
+    --ring: oklch(0.62 0.26 293);
+    --chart-1: oklch(0.62 0.26 293);
+    --chart-2: oklch(0.7 0.28 322);
+    --chart-3: oklch(0.72 0.02 286);
+    --chart-4: oklch(0.55 0.02 286);
+    --chart-5: oklch(0.26 0.01 286);
+    --sidebar: oklch(0.145 0.01 286 / 70%);
+    --sidebar-foreground: oklch(0.99 0 0);
+    --sidebar-primary: oklch(0.62 0.26 293);
+    --sidebar-primary-foreground: oklch(0.99 0 0);
+    --sidebar-accent: oklch(0.28 0.04 300 / 55%);
+    --sidebar-accent-foreground: oklch(0.99 0 0);
+    --sidebar-border: oklch(0.72 0.02 286 / 18%);
+    --sidebar-ring: oklch(0.62 0.26 293);
+
+    /* Soft, low-opacity glow colors for box-shadow "illumination" effects
+       (buttons, active nav items, badges) — kept separate from --primary/
+       --chart-2 so glow opacity can be tuned without affecting solid fills. */
+    --glow-primary: oklch(0.606 0.25 292.717 / 45%);
+    --glow-accent: oklch(0.667 0.295 322.15 / 40%);
 }
 
 @layer base {
@@ -121,9 +137,32 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     }
   html {
     @apply font-sans;
     }
+  h1, h2, h3, [data-slot="card-title"] {
+    letter-spacing: -0.03em;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply border border-zinc-800/80 bg-zinc-900/60 shadow-2xl shadow-black/40 backdrop-blur-xl;
+  }
+}
+
+/* Subtle violet/magenta glow washes behind the obsidian dark theme, fixed
+   to the viewport so they read as ambient lighting behind the glass
+   panels rather than scrolling with the page content. Scoped to `.dark`
+   only — light mode (reachable via the "d" hotkey) is intentionally left
+   untouched. */
+.dark body {
+  background-color: oklch(0.12 0.006 285.8);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 8% -10%, oklch(0.62 0.26 293 / 22%), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, oklch(0.7 0.28 322 / 16%), transparent 46%),
+    radial-gradient(ellipse 50% 40% at 50% 110%, oklch(0.5 0.2 293 / 12%), transparent 50%);
+  background-attachment: fixed;
 }

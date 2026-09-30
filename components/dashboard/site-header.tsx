@@ -11,19 +11,23 @@ type SiteHeaderProps = {
 
 export const SiteHeader = ({ title, description }: SiteHeaderProps) => {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-zinc-800/80 px-4 backdrop-blur-xl md:px-6">
       <SidebarTrigger />
-      <Separator orientation="vertical" className="h-5" />
+      <Separator orientation="vertical" className="h-5 bg-zinc-800" />
       <div className="flex min-w-0 flex-1 flex-col justify-center leading-tight">
-        <h1 className="truncate font-heading text-sm font-medium">{title}</h1>
+        <h1 className="truncate font-heading text-lg font-medium tracking-tight text-zinc-50">
+          {title}
+        </h1>
         {description ? (
-          <p className="truncate text-xs text-muted-foreground">{description}</p>
+          <p className="truncate text-xs tracking-wide text-zinc-500">
+            {description}
+          </p>
         ) : null}
       </div>
-      <Badge variant="secondary" className="hidden sm:inline-flex">
-        Claude 3.5 Sonnet
+      <Badge variant="default" className="hidden sm:inline-flex">
+        Claude Sonnet 4.6
       </Badge>
-      <Separator orientation="vertical" className="h-5" />
+      <Separator orientation="vertical" className="h-5 bg-zinc-800" />
       <NotificationBell />
       <UserMenu />
     </header>

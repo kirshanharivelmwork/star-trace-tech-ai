@@ -38,16 +38,24 @@ const footerItems = [{ title: "Settings", href: "/settings", icon: Settings }] a
 export const AppSidebar = () => {
   const pathname = usePathname()
 
+  const isItemActive = (href: string) => {
+    if (href === "/") return pathname === "/"
+    if (href.startsWith("/#")) return pathname === "/"
+    return pathname === href || pathname.startsWith(`${href}/`)
+  }
+
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar variant="inset" collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/" />}>
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-violet-500/20 text-violet-200 shadow-[0_0_18px_-4px_var(--glow-primary)]">
                 <Sparkles className="size-3.5" />
               </span>
-              <span className="font-heading font-medium">StarFlow</span>
+              <span className="font-heading text-base font-medium tracking-tight">
+                StarFlow
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -61,7 +69,7 @@ export const AppSidebar = () => {
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
-                    isActive={pathname === item.href}
+                    isActive={isItemActive(item.href)}
                     tooltip={item.title}
                     render={<Link href={item.href} />}
                   >
@@ -79,7 +87,11 @@ export const AppSidebar = () => {
         <SidebarMenu>
           {footerItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton tooltip={item.title} render={<Link href={item.href} />}>
+              <SidebarMenuButton
+                isActive={isItemActive(item.href)}
+                tooltip={item.title}
+                render={<Link href={item.href} />}
+              >
                 <item.icon />
                 <span>{item.title}</span>
               </SidebarMenuButton>

@@ -128,7 +128,11 @@ export const AbstractHistory = ({
                     type="button"
                     variant={isSelected ? "secondary" : "outline"}
                     onClick={() => onSelect(record)}
-                    className="h-auto w-full flex-col items-start gap-1 whitespace-normal px-3 py-2 text-left"
+                    className={
+                      isSelected
+                        ? "h-auto w-full flex-col items-start gap-1 whitespace-normal rounded-2xl border-violet-400/40 px-3 py-2 text-left shadow-[0_0_20px_-10px_var(--glow-primary)]"
+                        : "h-auto w-full flex-col items-start gap-1 whitespace-normal rounded-2xl px-3 py-2 text-left"
+                    }
                   >
                     <span className="w-full truncate text-sm font-medium text-foreground">
                       {record.file_name}

@@ -297,11 +297,13 @@ export const LeaseUploader = ({
         <div
           {...getRootProps()}
           className={[
-            "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center transition-colors",
-            isDragActive ? "border-primary bg-primary/5" : "border-border",
+            "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-6 py-10 text-center transition-all",
+            isDragActive
+              ? "border-violet-400/60 bg-violet-500/10 shadow-[0_0_32px_-12px_var(--glow-primary)]"
+              : "border-zinc-700/80",
             isBusy || isSignedOut || showUpgradePrompt
               ? "pointer-events-none opacity-60"
-              : "hover:border-primary/60 hover:bg-muted/40",
+              : "hover:border-violet-400/40 hover:bg-zinc-950/40 hover:shadow-[0_0_24px_-12px_var(--glow-primary)]",
           ].join(" ")}
         >
           <input {...getInputProps()} />

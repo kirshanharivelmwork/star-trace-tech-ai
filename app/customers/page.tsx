@@ -1,10 +1,8 @@
 import { Users } from "lucide-react"
 
-import { AppSidebar } from "@/components/dashboard/app-sidebar"
-import { SiteHeader } from "@/components/dashboard/site-header"
+import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import {
   getTenantSummaries,
   type PortfolioLeaseRow,
@@ -41,18 +39,12 @@ const formatDate = (date: Date | null) =>
 const EmptyState = ({ message }: { message: string }) => (
   <Card>
     <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
-      <Users className="size-5" />
+      <Users className="size-5 text-violet-300" />
       <p>{message}</p>
     </CardContent>
   </Card>
 )
 
-/**
- * Server Component: aggregates the current user's lease_abstracts by
- * tenant via lib/lease/portfolio-metrics.ts#getTenantSummaries — the same
- * shared parsing module used by the Analytics page and the Overview stat
- * cards, so tenant counts here never drift from what those pages report.
- */
 const CustomersContent = async () => {
   const supabase = await createClient()
   const {
@@ -88,50 +80,51 @@ const CustomersContent = async () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-medium">
+        <CardTitle className="text-sm font-medium tracking-tight">
           Tenants ({tenants.length})
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-hidden rounded-2xl border border-zinc-800/80">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-muted/40 text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">Tenant</th>
-                <th className="px-3 py-2 font-medium">Active leases</th>
-                <th className="px-3 py-2 font-medium">Premises</th>
-                <th className="px-3 py-2 font-medium">Square footage</th>
-                <th className="px-3 py-2 font-medium">Nearest expiration</th>
-                <th className="px-3 py-2 font-medium">Risk</th>
+              <tr className="bg-zinc-950/50 text-left text-[11px] tracking-widest text-zinc-500 uppercase">
+                <th className="px-4 py-3 font-medium">Tenant</th>
+                <th className="px-4 py-3 font-medium">Active leases</th>
+                <th className="px-4 py-3 font-medium">Premises</th>
+                <th className="px-4 py-3 font-medium">Square footage</th>
+                <th className="px-4 py-3 font-medium">Nearest expiration</th>
+                <th className="px-4 py-3 font-medium">Risk</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-zinc-800/80">
               {tenants.map((tenant) => (
-                <tr key={tenant.tenantName}>
-                  <td className="px-3 py-2 font-medium text-foreground">
+                <tr
+                  key={tenant.tenantName}
+                  className="transition-colors hover:bg-violet-500/5"
+                >
+                  <td className="px-4 py-3 font-medium tracking-tight text-zinc-50">
                     {tenant.tenantName}
                   </td>
-                  <td className="px-3 py-2 text-foreground">
+                  <td className="px-4 py-3 text-zinc-200">
                     {tenant.activeLeaseCount}
                     {tenant.totalLeaseCount !== tenant.activeLeaseCount ? (
-                      <span className="text-muted-foreground">
+                      <span className="text-zinc-500">
                         {" "}
                         / {tenant.totalLeaseCount} total
                       </span>
                     ) : null}
                   </td>
-                  <td className="max-w-[18rem] px-3 py-2 text-muted-foreground">
+                  <td className="max-w-[18rem] px-4 py-3 text-zinc-400">
                     {tenant.premisesAddresses.length > 0
                       ? tenant.premisesAddresses.join("; ")
                       : "Not specified"}
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    Not tracked
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-foreground">
+                  <td className="px-4 py-3 text-zinc-500">Not tracked</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-zinc-200">
                     {formatDate(tenant.nearestExpiration)}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-4 py-3">
                     <Badge variant={RISK_BADGE_VARIANT[tenant.riskCategory]}>
                       {RISK_BADGE_LABEL[tenant.riskCategory]}
                     </Badge>
@@ -142,7 +135,7 @@ const CustomersContent = async () => {
           </table>
         </div>
 
-        <p className="pt-3 text-xs text-muted-foreground">
+        <p className="pt-3 text-xs text-zinc-500">
           Square footage isn&apos;t captured by the lease abstraction schema
           yet, so it can&apos;t be shown per tenant — flagging this rather
           than guessing a value.
@@ -154,17 +147,11 @@ const CustomersContent = async () => {
 
 export default function CustomersPage() {
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <SiteHeader
-          title="Customers"
-          description="Tenants across your lease portfolio"
-        />
-        <main className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-          <CustomersContent />
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+    <DashboardShell
+      title="Customers"
+      description="Tenants across your lease portfolio"
+    >
+      <CustomersContent />
+    </DashboardShell>
   )
 }
