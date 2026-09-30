@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation"
 import {
   BarChart3,
   Home,
+  Landmark,
   MessageSquare,
   Settings,
+  Shield,
   Sparkles,
   Users,
 } from "lucide-react"
@@ -31,6 +33,8 @@ const navItems = [
   { title: "Assistant", href: "/#assistant", icon: MessageSquare },
   { title: "Analytics", href: "/analytics", icon: BarChart3 },
   { title: "Customers", href: "/customers", icon: Users },
+  { title: "Finances", href: "/finances", icon: Landmark },
+  { title: "Data room", href: "/security", icon: Shield },
 ] as const
 
 const footerItems = [{ title: "Settings", href: "/settings", icon: Settings }] as const

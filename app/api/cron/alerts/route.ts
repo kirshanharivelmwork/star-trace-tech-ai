@@ -3,9 +3,14 @@ import { Resend } from "resend"
 
 import {
   getExactThresholdLeaseAlerts,
+  CRON_ALERT_THRESHOLDS_DAYS,
   type LeaseAlert,
   type PortfolioLeaseRow,
 } from "@/lib/lease/portfolio-metrics"
+import {
+  calendarDaysUntil,
+  parseIsoDate,
+} from "@/lib/enterprise/metrics"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 // Cron jobs must never be statically cached/prerendered — always run live.
@@ -157,6 +162,247 @@ const sendLeaseAlertEmail = async (params: {
   }
 }
 
+type NoticeWindowCronRow = {
+  id: string
+  lease_id: string | null
+  status: string | null
+  target_date: string | null
+}
+
+type LeaseCronRow = {
+  id: string
+  property_id: string | null
+  tenant_name: string | null
+}
+
+type PropertyCronRow = {
+  id: string
+  user_id: string | null
+  name: string | null
+}
+
+const NOTICE_SKIP_STATUS = new Set([
+  "closed",
+  "cancelled",
+  "canceled",
+  "dismissed",
+  "expired",
+])
+
+const buildNoticeWindowEmailHtml = (params: {
+  tenantName: string
+  propertyName: string
+  targetDate: Date
+  daysUntil: number
+}) => {
+  const formattedDate = params.targetDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })
+  const daysLabel = `${params.daysUntil} day${params.daysUntil === 1 ? "" : "s"}`
+
+  return `<!DOCTYPE html>
+<html>
+  <body style="margin:0;padding:0;background-color:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+    <div style="max-width:480px;margin:0 auto;padding:32px 24px;">
+      <div style="border-radius:12px;border:1px solid #27272a;background-color:#18181b;padding:32px 24px;">
+        <span style="display:inline-block;padding:4px 10px;border-radius:6px;background-color:rgba(239,68,68,0.15);color:#f87171;font-size:12px;font-weight:600;letter-spacing:0.02em;">
+          ⚠️ NOTICE WINDOW ALERT
+        </span>
+        <h1 style="margin:16px 0 4px;color:#fafafa;font-size:20px;font-weight:600;line-height:1.3;">
+          ${daysLabel} until notice deadline
+        </h1>
+        <p style="margin:0 0 24px;color:#a1a1aa;font-size:14px;">
+          ${escapeHtml(formattedDate)}
+        </p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+          <tr>
+            <td style="padding:8px 0;color:#71717a;font-size:12px;">Tenant</td>
+            <td style="padding:8px 0;color:#fafafa;font-size:13px;text-align:right;">${escapeHtml(params.tenantName)}</td>
+          </tr>
+          <tr style="border-top:1px solid #27272a;">
+            <td style="padding:8px 0;color:#71717a;font-size:12px;">Asset</td>
+            <td style="padding:8px 0;color:#fafafa;font-size:13px;text-align:right;">${escapeHtml(params.propertyName)}</td>
+          </tr>
+          <tr style="border-top:1px solid #27272a;">
+            <td style="padding:8px 0;color:#71717a;font-size:12px;">Days remaining</td>
+            <td style="padding:8px 0;color:#fafafa;font-size:13px;text-align:right;">${daysLabel}</td>
+          </tr>
+        </table>
+        <a
+          href="${DASHBOARD_URL}"
+          style="display:block;box-sizing:border-box;text-align:center;padding:10px 16px;border-radius:8px;background-color:#fafafa;color:#0a0a0a;font-size:14px;font-weight:600;text-decoration:none;"
+        >
+          View in StarFlow →
+        </a>
+      </div>
+      <p style="margin:16px 0 0;text-align:center;color:#52525b;font-size:11px;">
+        Automated notice-window alert from StarFlow.
+      </p>
+    </div>
+  </body>
+</html>`
+}
+
+const sendNoticeWindowEmail = async (params: {
+  userId: string
+  tenantName: string
+  propertyName: string
+  targetDate: Date
+  daysUntil: number
+  supabaseAdmin: SupabaseClient
+}) => {
+  const { userId, supabaseAdmin } = params
+
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
+
+    if (error || !data?.user?.email) {
+      console.error(
+        `[CRON] Skipping notice email for user_id ${userId} — could not resolve an email address:`,
+        error?.message ?? "user has no email on file"
+      )
+      return
+    }
+
+    const recipientEmail = data.user.email
+
+    const { error: sendError } = await resend.emails.send({
+      from: "StarFlow Alerts <onboarding@resend.dev>",
+      to: recipientEmail,
+      subject: `⚠️ Action Required: Notice window (${params.tenantName})`,
+      html: buildNoticeWindowEmailHtml({
+        tenantName: params.tenantName,
+        propertyName: params.propertyName,
+        targetDate: params.targetDate,
+        daysUntil: params.daysUntil,
+      }),
+    })
+
+    if (sendError) {
+      console.error(
+        `[CRON] Resend API error sending notice window to ${recipientEmail}:`,
+        sendError.message
+      )
+    }
+  } catch (error) {
+    console.error(
+      `[CRON] Unexpected error sending notice window email for user_id ${userId}:`,
+      error
+    )
+  }
+}
+
+const processNoticeWindows = async (
+  supabaseAdmin: SupabaseClient,
+  now: Date = new Date()
+): Promise<{ processedWindows: number; noticeAlertsSent: number }> => {
+  const { data: windowData, error: windowError } = await supabaseAdmin
+    .from("notice_windows")
+    .select("id, lease_id, status, target_date")
+
+  if (windowError) {
+    console.error("[CRON] Failed to fetch notice_windows:", windowError.message)
+    return { processedWindows: 0, noticeAlertsSent: 0 }
+  }
+
+  const windows = (windowData ?? []) as NoticeWindowCronRow[]
+  const leaseIds = [
+    ...new Set(
+      windows
+        .map((window) => window.lease_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ]
+
+  let leases: LeaseCronRow[] = []
+  if (leaseIds.length > 0) {
+    const { data: leaseData, error: leaseError } = await supabaseAdmin
+      .from("leases")
+      .select("id, property_id, tenant_name")
+      .in("id", leaseIds)
+
+    if (leaseError) {
+      console.error(
+        "[CRON] Failed to fetch leases for notice windows:",
+        leaseError.message
+      )
+    } else {
+      leases = (leaseData ?? []) as LeaseCronRow[]
+    }
+  }
+
+  const propertyIds = [
+    ...new Set(
+      leases
+        .map((lease) => lease.property_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ]
+
+  let properties: PropertyCronRow[] = []
+  if (propertyIds.length > 0) {
+    const { data: propertyData, error: propertyError } = await supabaseAdmin
+      .from("properties")
+      .select("id, user_id, name")
+      .in("id", propertyIds)
+
+    if (propertyError) {
+      console.error(
+        "[CRON] Failed to fetch properties for notice windows:",
+        propertyError.message
+      )
+    } else {
+      properties = (propertyData ?? []) as PropertyCronRow[]
+    }
+  }
+
+  const leaseById = new Map(leases.map((lease) => [lease.id, lease]))
+  const propertyById = new Map(
+    properties.map((property) => [property.id, property])
+  )
+  const thresholds = new Set<number>(CRON_ALERT_THRESHOLDS_DAYS)
+
+  let noticeAlertsSent = 0
+
+  for (const window of windows) {
+    const status = window.status?.trim().toLowerCase() ?? ""
+    if (status && NOTICE_SKIP_STATUS.has(status)) continue
+
+    const targetDate = parseIsoDate(window.target_date)
+    if (!targetDate) continue
+
+    const daysUntil = calendarDaysUntil(targetDate, now)
+    if (!thresholds.has(daysUntil)) continue
+
+    const lease = window.lease_id ? leaseById.get(window.lease_id) : undefined
+    const property = lease?.property_id
+      ? propertyById.get(lease.property_id)
+      : undefined
+    const userId = property?.user_id
+
+    if (!userId) {
+      console.warn(
+        `[CRON] Skipping notice window ${window.id} — could not resolve property owner.`
+      )
+      continue
+    }
+
+    await sendNoticeWindowEmail({
+      userId,
+      tenantName: lease?.tenant_name?.trim() || "Unnamed tenant",
+      propertyName: property?.name?.trim() || "Unassigned asset",
+      targetDate,
+      daysUntil,
+      supabaseAdmin,
+    })
+    noticeAlertsSent += 1
+  }
+
+  return { processedWindows: windows.length, noticeAlertsSent }
+}
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET
 
@@ -232,11 +478,18 @@ export async function GET(request: Request) {
   }
 
   console.log(
-    `[CRON] Processed ${records.length} lease(s); attempted ${sentCount} alert(s).`
+    `[CRON] Processed ${records.length} lease(s); attempted ${sentCount} abstract alert(s).`
+  )
+
+  const noticeResult = await processNoticeWindows(supabaseAdmin)
+  console.log(
+    `[CRON] Processed ${noticeResult.processedWindows} notice window(s); attempted ${noticeResult.noticeAlertsSent} notice alert(s).`
   )
 
   return Response.json({
     processedLeases: records.length,
     alertsSent: sentCount,
+    processedNoticeWindows: noticeResult.processedWindows,
+    noticeAlertsSent: noticeResult.noticeAlertsSent,
   })
 }
