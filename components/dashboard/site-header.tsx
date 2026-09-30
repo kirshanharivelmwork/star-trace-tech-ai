@@ -1,3 +1,5 @@
+import { NotificationBell } from "@/components/dashboard/notification-bell"
+import { UserMenu } from "@/components/dashboard/user-menu"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -21,6 +23,9 @@ export const SiteHeader = ({ title, description }: SiteHeaderProps) => {
       <Badge variant="secondary" className="hidden sm:inline-flex">
         Claude 3.5 Sonnet
       </Badge>
+      <Separator orientation="vertical" className="h-5" />
+      <NotificationBell />
+      <UserMenu />
     </header>
   )
 }

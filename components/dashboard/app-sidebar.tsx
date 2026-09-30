@@ -26,12 +26,14 @@ import {
 
 const navItems = [
   { title: "Overview", href: "/", icon: Home },
+  // Same-page anchor, not a route — app/page.tsx renders
+  // <div id="assistant"> around the chat panel, so this actually works.
   { title: "Assistant", href: "/#assistant", icon: MessageSquare },
-  { title: "Analytics", href: "/#analytics", icon: BarChart3 },
-  { title: "Customers", href: "/#customers", icon: Users },
+  { title: "Analytics", href: "/analytics", icon: BarChart3 },
+  { title: "Customers", href: "/customers", icon: Users },
 ] as const
 
-const footerItems = [{ title: "Settings", href: "/#settings", icon: Settings }] as const
+const footerItems = [{ title: "Settings", href: "/settings", icon: Settings }] as const
 
 export const AppSidebar = () => {
   const pathname = usePathname()
