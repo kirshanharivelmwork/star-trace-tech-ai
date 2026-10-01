@@ -1,3 +1,5 @@
+"use client"
+
 import { cn } from "cn"
 
 export type SpatialTone = "pink" | "mint" | "blue"
