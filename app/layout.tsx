@@ -1,10 +1,17 @@
 import { Geist_Mono, Outfit, Plus_Jakarta_Sans } from "next/font/google"
+import type { Metadata } from "next"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { UserProvider } from "@/components/providers/user-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+
+export const metadata: Metadata = {
+  title: "StarFlow",
+  description:
+    "AI abstracts commercial leases, then runs portfolio risk, CAM, notice windows, and lessee accounting from the same record.",
+}
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],

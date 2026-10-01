@@ -1,33 +1,22 @@
 import { anthropic } from "@ai-sdk/anthropic"
 import { streamObject } from "ai"
 
+import { hydrateCanonicalLease } from "@/lib/lease/hydrate"
+import { getOrgContext } from "@/lib/org/context"
 import { FREE_LEASE_ABSTRACT_LIMIT } from "@/lib/stripe/constants"
-import { getUserSubscription } from "@/lib/stripe/server"
+import { getOrgSubscription } from "@/lib/stripe/server"
 import { createClient } from "@/lib/supabase/server"
 import { leaseAbstractSchema, type LeaseAnalysisInput } from "./schema"
+import type { PortfolioLeaseAbstract } from "@/lib/lease/portfolio-metrics"
 
-// Dedicated endpoint for the Commercial Lease Abstractor (see
-// components/dashboard/lease-uploader.tsx and abstract-viewer.tsx). Kept
-// separate from app/api/chat/route.ts so the general-purpose dashboard
-// assistant keeps its own persona and isn't affected by changes here.
-
-// PDF lease analysis can take longer than a simple chat reply, so allow
-// extra time for the model to finish.
 export const maxDuration = 60
 
-// "claude-3-5-sonnet-20241022" was retired by Anthropic. Kept as a single
-// constant so it can be swapped again in one place if this model is
-// deprecated in the future.
 const MODEL_ID = "claude-sonnet-4-6"
 
 const SYSTEM_PROMPT = `You are an expert commercial real estate attorney acting as a Commercial Lease Abstractor.
 
-Carefully read the entire attached PDF lease document and extract every requested field. Quote or closely paraphrase the source document rather than guessing. If a field genuinely isn't addressed in the document, say so explicitly (e.g. "Not specified in the document") instead of inventing a value. This tool does not provide legal advice.`
+Carefully read the entire attached PDF lease document and extract every requested field. Quote or closely paraphrase the source document rather than guessing. If a field genuinely isn't addressed in the document, say so explicitly (e.g. "Not specified in the document") instead of inventing a value. Convert rent to a monthly numeric amount when possible. Use ISO YYYY-MM-DD for noticeDeadlines.targetDate when the date is parseable. Ignore placeholders such as [●], TBD, or "Not specified". This tool does not provide legal advice.`
 
-// `useObject` (the client hook) reads the raw response body text as the
-// `Error` message whenever `response.ok` is false — so error responses from
-// this route are returned as plain text, not JSON, to keep that message
-// clean for the client to display.
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
     console.error("[Lease API Error]: ANTHROPIC_API_KEY is missing in .env.local")
@@ -36,9 +25,6 @@ export async function POST(req: Request) {
     })
   }
 
-  // Auth via the existing @supabase/ssr server client (see
-  // lib/supabase/server.ts) — reused below for the lease_abstracts insert
-  // so `auth.uid()` resolves correctly for RLS.
   const supabase = await createClient()
   const {
     data: { user },
@@ -52,17 +38,26 @@ export async function POST(req: Request) {
     })
   }
 
-  // Billing gate: free accounts get FREE_LEASE_ABSTRACT_LIMIT abstracts
-  // total, ever; Pro (active/trialing in the `subscriptions` table) is
-  // unlimited. This is the authoritative check — the client-side gate in
-  // lease-uploader.tsx is UX only and must never be trusted on its own.
-  const subscription = await getUserSubscription(user.id)
+  const org = await getOrgContext()
+  if (!org) {
+    return new Response("Workspace is not ready. Refresh and try again.", {
+      status: 403,
+    })
+  }
+
+  if (!org.canWrite) {
+    return new Response("You have view-only access to this workspace.", {
+      status: 403,
+    })
+  }
+
+  const subscription = await getOrgSubscription(org.orgId, org.userId)
 
   if (!subscription.isPro) {
     const { count, error: countError } = await supabase
       .from("lease_abstracts")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
+      .eq("organization_id", org.orgId)
 
     if (countError) {
       console.error(
@@ -71,7 +66,7 @@ export async function POST(req: Request) {
       )
     } else if ((count ?? 0) >= FREE_LEASE_ABSTRACT_LIMIT) {
       console.warn(
-        `[Lease API] Blocked upload for user_id ${user.id}: free limit (${FREE_LEASE_ABSTRACT_LIMIT}) reached.`
+        `[Lease API] Blocked upload for org ${org.orgId}: free limit (${FREE_LEASE_ABSTRACT_LIMIT}) reached.`
       )
       return new Response(
         `You've reached the free plan limit of ${FREE_LEASE_ABSTRACT_LIMIT} lease abstracts. Upgrade to Pro for unlimited abstracts.`,
@@ -104,9 +99,6 @@ export async function POST(req: Request) {
             },
             {
               type: "file",
-              // Bare base64 string — the AI SDK inlines this as base64
-              // document data sent directly to Claude, rather than a URL
-              // Anthropic's servers would need to fetch.
               data: fileBase64,
               mediaType: "application/pdf",
               filename: fileName,
@@ -124,21 +116,34 @@ export async function POST(req: Request) {
         }
 
         try {
-          const { error: insertError } = await supabase
+          const { data: inserted, error: insertError } = await supabase
             .from("lease_abstracts")
             .insert({
               file_name: fileName,
               storage_path: storagePath,
               abstract_data: object,
               user_id: user.id,
+              organization_id: org.orgId,
             })
+            .select("id")
+            .single()
 
-          if (insertError) {
+          if (insertError || !inserted) {
             console.error(
               "[Lease API Error] failed to persist abstract:",
-              insertError.message
+              insertError?.message
             )
+            return
           }
+
+          await hydrateCanonicalLease({
+            supabase,
+            userId: user.id,
+            organizationId: org.orgId,
+            abstractId: inserted.id as string,
+            fileName,
+            abstract: object as PortfolioLeaseAbstract,
+          })
         } catch (persistError) {
           console.error(
             "[Lease API Error] failed to persist abstract:",

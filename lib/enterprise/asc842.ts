@@ -1,11 +1,24 @@
 import { roundCents } from "@/lib/enterprise/metrics"
 import type {
   AmortizationRow,
+  LeaseAccountingInputs,
   LeaseDisclosureSchedule,
   LeasePaymentTerm,
+  LeasePresentation,
 } from "@/lib/enterprise/types"
 
-const DEFAULT_ANNUAL_RATE = 0.05
+export const DEFAULT_ANNUAL_RATE = 0.05
+
+export const defaultAccountingInputs = (
+  overrides: Partial<LeaseAccountingInputs> = {}
+): LeaseAccountingInputs => ({
+  incrementalBorrowingRate: DEFAULT_ANNUAL_RATE,
+  initialDirectCosts: 0,
+  prepaidRent: 0,
+  leaseIncentives: 0,
+  presentation: "finance",
+  ...overrides,
+})
 
 /** Present value of an ordinary annuity: PMT × (1 − (1+r)^−n) / r. */
 export const presentValueOfAnnuity = (
@@ -29,27 +42,50 @@ const isoDate = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
+const asPresentation = (value: string | null | undefined): LeasePresentation =>
+  value === "operating" ? "operating" : "finance"
+
 /**
- * Lessee amortization under ASC 842 / IFRS 16 (simplified monthly):
- * initial liability = PV of remaining payments; ROU starts at the same
- * amount and depreciates straight-line. Interest accretes on the
- * outstanding liability each period.
+ * Simplified monthly ordinary annuity (not audited GAAP).
+ *
+ * Liability initial = PV of remaining payments only.
+ * ROU initial = PV + initial direct costs + prepaid rent − lease incentives.
+ * Each period: interest on outstanding liability, principal, straight-line
+ * ROU amortization. Last period zeros both balances.
+ *
+ * Presentation is a user-selected P&L flag, not an auto-classification
+ * under the five ASC 842 tests:
+ *   finance  → interest + amortization
+ *   operating → straight-line lease expense
  */
 export const buildLeaseDisclosureSchedule = (
   term: LeasePaymentTerm,
-  annualRate: number = DEFAULT_ANNUAL_RATE,
   now: Date = new Date()
 ): LeaseDisclosureSchedule => {
+  const inputs = defaultAccountingInputs(term.accounting)
   const periods = Math.max(0, term.remainingMonths)
-  const rate = annualRate < 0 ? 0 : annualRate
+  const rate =
+    inputs.incrementalBorrowingRate < 0 ? 0 : inputs.incrementalBorrowingRate
   const monthlyRate = rate / 12
   const payment = roundCents(term.monthlyPayment)
-  const initialLiability = presentValueOfAnnuity(payment, periods, monthlyRate)
-  const depreciation = periods > 0 ? roundCents(initialLiability / periods) : 0
+  const idc = roundCents(Math.max(0, inputs.initialDirectCosts))
+  const prepaid = roundCents(Math.max(0, inputs.prepaidRent))
+  const incentives = roundCents(Math.max(0, inputs.leaseIncentives))
+  const presentation = asPresentation(inputs.presentation)
+
+  const pvRemaining = presentValueOfAnnuity(payment, periods, monthlyRate)
+  const initialLiability = pvRemaining
+  const initialRou = roundCents(Math.max(0, pvRemaining + idc + prepaid - incentives))
+  const depreciation = periods > 0 ? roundCents(initialRou / periods) : 0
+
+  const totalOperatingCost = roundCents(payment * periods + idc - incentives)
+  const straightLineExpense =
+    periods > 0 ? roundCents(totalOperatingCost / periods) : 0
 
   const rows: AmortizationRow[] = []
   let liability = initialLiability
-  let rou = initialLiability
+  let rou = initialRou
+  let operatingAllocated = 0
 
   for (let period = 1; period <= periods; period += 1) {
     const isLast = period === periods
@@ -67,6 +103,13 @@ export const buildLeaseDisclosureSchedule = (
     rou = roundCents(Math.max(0, rou - thisDepreciation))
     if (isLast) rou = 0
 
+    const financeExpense = roundCents(interest + thisDepreciation)
+    let operatingExpense = isLast
+      ? roundCents(totalOperatingCost - operatingAllocated)
+      : straightLineExpense
+    if (isLast && operatingExpense < 0) operatingExpense = 0
+    operatingAllocated = roundCents(operatingAllocated + operatingExpense)
+
     rows.push({
       period,
       dateIso: isoDate(addMonths(now, period)),
@@ -76,8 +119,19 @@ export const buildLeaseDisclosureSchedule = (
       endingLiability: liability,
       depreciation: thisDepreciation,
       endingRou: rou,
+      financeExpense,
+      operatingExpense,
+      periodExpense:
+        presentation === "operating" ? operatingExpense : financeExpense,
     })
   }
+
+  const financeExpenseTotal = roundCents(
+    rows.reduce((sum, row) => sum + row.financeExpense, 0)
+  )
+  const operatingExpenseTotal = roundCents(
+    rows.reduce((sum, row) => sum + row.operatingExpense, 0)
+  )
 
   return {
     leaseId: term.leaseId,
@@ -87,17 +141,22 @@ export const buildLeaseDisclosureSchedule = (
     remainingMonths: periods,
     annualRate: rate,
     initialLiability,
-    initialRou: initialLiability,
+    initialRou,
     undiscountedRemaining: roundCents(payment * periods),
+    initialDirectCosts: idc,
+    prepaidRent: prepaid,
+    leaseIncentives: incentives,
+    presentation,
+    financeExpenseTotal,
+    operatingExpenseTotal,
     rows,
   }
 }
 
 export const buildPortfolioDisclosure = (
   terms: LeasePaymentTerm[],
-  annualRate: number = DEFAULT_ANNUAL_RATE,
   now: Date = new Date()
 ): LeaseDisclosureSchedule[] =>
   terms
     .filter((term) => term.monthlyPayment > 0 && term.remainingMonths > 0)
-    .map((term) => buildLeaseDisclosureSchedule(term, annualRate, now))
+    .map((term) => buildLeaseDisclosureSchedule(term, now))

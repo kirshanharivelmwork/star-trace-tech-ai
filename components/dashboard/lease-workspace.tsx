@@ -81,6 +81,7 @@ export const LeaseWorkspace = () => {
             fileName={viewerFileName}
             isLoading={isViewerLoading}
             errorMessage={viewerError}
+            leaseAbstractId={selectedRecord?.id ?? null}
           />
         ) : null}
       </div>

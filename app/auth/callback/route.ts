@@ -9,7 +9,11 @@ import { createClient } from "@/lib/supabase/server"
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get("code")
-  const redirectTo = searchParams.get("redirect_to") ?? "/"
+  const rawRedirect = searchParams.get("redirect_to") ?? "/app"
+  const redirectTo =
+    rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
+      ? rawRedirect
+      : "/app"
 
   if (code) {
     const supabase = await createClient()
@@ -22,5 +26,5 @@ export async function GET(request: Request) {
     console.error("[Auth Callback Error]:", error.message)
   }
 
-  return NextResponse.redirect(`${origin}/?auth_error=1`)
+  return NextResponse.redirect(`${origin}/login?auth_error=1`)
 }

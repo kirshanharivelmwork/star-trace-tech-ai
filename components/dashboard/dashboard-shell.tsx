@@ -4,6 +4,8 @@ import { AmbientOrbs } from "@/components/dashboard/ambient-orbs"
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { SiteHeader } from "@/components/dashboard/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { OrgProvider } from "@/components/providers/org-provider"
+import { getOrgContext } from "@/lib/org/context"
 
 type DashboardShellProps = {
   title: string
@@ -11,26 +13,29 @@ type DashboardShellProps = {
   children: ReactNode
 }
 
-/**
- * Shared chrome for every dashboard route so Overview / Analytics /
- * Customers / Settings all inherit the same inset glass layout instead of
- * each page re-declaring SidebarProvider + header + padded main.
- */
-export const DashboardShell = ({
+export const DashboardShell = async ({
   title,
   description,
   children,
 }: DashboardShellProps) => {
+  const org = await getOrgContext()
+
   return (
-    <SidebarProvider className="relative">
-      <AmbientOrbs />
-      <AppSidebar />
-      <SidebarInset>
-        <SiteHeader title={title} description={description} />
-        <div className="relative z-10 flex flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
-          {children}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <OrgProvider value={org}>
+      <SidebarProvider className="relative">
+        <AmbientOrbs />
+        <AppSidebar
+          orgName={org?.orgName ?? "StarFlow"}
+          orgId={org?.orgId ?? ""}
+          memberships={org?.memberships ?? []}
+        />
+        <SidebarInset>
+          <SiteHeader title={title} description={description} />
+          <div className="relative z-10 flex flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">
+            {children}
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </OrgProvider>
   )
 }

@@ -1,6 +1,32 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
+const PUBLIC_EXACT = new Set(["/", "/login"])
+
+const isPublicPath = (pathname: string): boolean => {
+  if (PUBLIC_EXACT.has(pathname)) return true
+  if (pathname.startsWith("/auth/callback")) return true
+  if (pathname.startsWith("/api/stripe/webhook")) return true
+  if (pathname.startsWith("/api/cron/alerts")) return true
+  return false
+}
+
+const copyCookiesAndCacheHeaders = (
+  from: NextResponse,
+  to: NextResponse
+): NextResponse => {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie.name, cookie.value)
+  })
+  from.headers.forEach((value, key) => {
+    const lower = key.toLowerCase()
+    if (lower === "cache-control" || lower === "pragma") {
+      to.headers.set(key, value)
+    }
+  })
+  return to
+}
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
@@ -11,21 +37,13 @@ export async function proxy(request: NextRequest) {
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookiesToSet, headers) => {
-          // Mirror refreshed cookies onto the request so downstream Server
-          // Components in *this* render see the new session immediately.
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
 
-          // Rebuild the response from the mutated request, then mirror the
-          // same cookies onto it so the browser receives the Set-Cookie
-          // headers for the *next* request.
           response = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           )
 
-          // Auth cookie writes must never be cached by a CDN/reverse proxy
-          // (it would leak one user's session to another). Forward the
-          // cache-control headers @supabase/ssr provides for this response.
           Object.entries(headers).forEach(([key, headerValue]) => {
             response.headers.set(key, headerValue)
           })
@@ -34,34 +52,43 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: Avoid writing any logic between `createServerClient` and
-  // `supabase.auth.getUser()`. A simple mistake could make it very hard to
-  // debug issues with users being randomly logged out.
-  //
-  // This call is what actually refreshes the session — it validates the
-  // access token and, if expired, uses the refresh token to get a new one,
-  // which triggers the `setAll` callback above.
-  await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  // This middleware only refreshes the session. Add route-protection
-  // (redirects for unauthenticated users) here once you have auth pages.
+  const { pathname } = request.nextUrl
+  const publicPath = isPublicPath(pathname)
 
-  // IMPORTANT: You *must* return the `response` object as it is. If you
-  // create a new response object here (e.g. `NextResponse.next()`), make
-  // sure to copy over the cookies set above, or the refreshed session will
-  // not be persisted to the browser, causing random logouts.
+  if (!user && !publicPath) {
+    if (pathname.startsWith("/api/")) {
+      const unauthorized = NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+      return copyCookiesAndCacheHeaders(response, unauthorized)
+    }
+
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.pathname = "/login"
+    loginUrl.search = ""
+    if (pathname !== "/login") {
+      loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
+    }
+    return copyCookiesAndCacheHeaders(response, NextResponse.redirect(loginUrl))
+  }
+
+  if (user && pathname === "/login") {
+    const appUrl = request.nextUrl.clone()
+    appUrl.pathname = "/app"
+    appUrl.search = ""
+    return copyCookiesAndCacheHeaders(response, NextResponse.redirect(appUrl))
+  }
+
   return response
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico, sitemap.xml, robots.txt (metadata files)
-     * - common static asset extensions
-     */
     "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }

@@ -36,6 +36,7 @@ export type TenantCamAllocationRow = {
 export type AuditLogRow = {
   id: string
   user_id: string | null
+  organization_id?: string | null
   action: string | null
   resource_type: string | null
   details: unknown
@@ -98,6 +99,17 @@ export type LeasePaymentTerm = {
   startDate: string | null
   endDate: string | null
   remainingMonths: number
+  accounting: LeaseAccountingInputs
+}
+
+export type LeasePresentation = "finance" | "operating"
+
+export type LeaseAccountingInputs = {
+  incrementalBorrowingRate: number
+  initialDirectCosts: number
+  prepaidRent: number
+  leaseIncentives: number
+  presentation: LeasePresentation
 }
 
 export type AmortizationRow = {
@@ -109,6 +121,9 @@ export type AmortizationRow = {
   endingLiability: number
   depreciation: number
   endingRou: number
+  financeExpense: number
+  operatingExpense: number
+  periodExpense: number
 }
 
 export type LeaseDisclosureSchedule = {
@@ -121,5 +136,11 @@ export type LeaseDisclosureSchedule = {
   initialLiability: number
   initialRou: number
   undiscountedRemaining: number
+  initialDirectCosts: number
+  prepaidRent: number
+  leaseIncentives: number
+  presentation: LeasePresentation
+  financeExpenseTotal: number
+  operatingExpenseTotal: number
   rows: AmortizationRow[]
 }

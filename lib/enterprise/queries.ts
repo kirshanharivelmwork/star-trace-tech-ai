@@ -5,12 +5,14 @@ import {
   remainingWholeMonths,
   toMoney,
 } from "@/lib/enterprise/metrics"
+import { defaultAccountingInputs } from "@/lib/enterprise/asc842"
 import type {
   AuditLogRow,
   CamAllocationView,
   CamSnapshot,
   ExpenseLedgerRow,
   LeasePaymentTerm,
+  LeasePresentation,
   NoticeAlert,
   NoticeWindowRow,
   OperatingExpenseRow,
@@ -21,13 +23,16 @@ import { isActiveLease, toNumber } from "@/lib/telemetry/metrics"
 import type { LeaseRow, PropertyRow } from "@/lib/telemetry/types"
 import { createClient } from "@/lib/supabase/server"
 
-const loadOwnedPortfolio = async (userId: string) => {
+const LEASE_SELECT =
+  "id, property_id, tenant_name, status, start_date, end_date, square_footage, monthly_rent, created_at, incremental_borrowing_rate, initial_direct_costs, prepaid_rent, lease_incentives, accounting_presentation, needs_review"
+
+export const loadOwnedPortfolio = async (organizationId: string) => {
   const supabase = await createClient()
 
   const { data: propertyData, error: propertyError } = await supabase
     .from("properties")
-    .select("id, user_id, name, valuation, total_nra, created_at")
-    .eq("user_id", userId)
+    .select("id, user_id, organization_id, name, address, valuation, total_nra, created_at")
+    .eq("organization_id", organizationId)
 
   if (propertyError) {
     console.error("[enterprise] properties:", propertyError.message)
@@ -41,9 +46,7 @@ const loadOwnedPortfolio = async (userId: string) => {
   if (propertyIds.length > 0) {
     const { data: leaseData, error: leaseError } = await supabase
       .from("leases")
-      .select(
-        "id, property_id, tenant_name, status, start_date, end_date, square_footage, monthly_rent, created_at"
-      )
+      .select(LEASE_SELECT)
       .in("property_id", propertyIds)
 
     if (leaseError) {
@@ -57,16 +60,16 @@ const loadOwnedPortfolio = async (userId: string) => {
 }
 
 export const fetchNoticeAlerts = async (
-  userId: string,
+  organizationId: string,
   now: Date = new Date()
 ): Promise<NoticeAlert[]> => {
-  const { supabase, propertyById, leases } = await loadOwnedPortfolio(userId)
+  const { supabase, propertyById, leases } = await loadOwnedPortfolio(organizationId)
   const leaseIds = leases.map((lease) => lease.id)
   if (leaseIds.length === 0) return []
 
   const { data, error } = await supabase
     .from("notice_windows")
-    .select("id, lease_id, status, target_date, created_at")
+    .select("id, lease_id, status, target_date, created_at, label, notice_days")
     .in("lease_id", leaseIds)
 
   if (error) {
@@ -109,9 +112,11 @@ export const fetchNoticeAlerts = async (
   return alerts
 }
 
-export const fetchCamSnapshot = async (userId: string): Promise<CamSnapshot> => {
+export const fetchCamSnapshot = async (
+  organizationId: string
+): Promise<CamSnapshot> => {
   const { supabase, properties, propertyIds, propertyById, leases } =
-    await loadOwnedPortfolio(userId)
+    await loadOwnedPortfolio(organizationId)
 
   const propertyOptions: PropertyOption[] = properties.map((property) => ({
     id: property.id,
@@ -184,11 +189,14 @@ export const fetchCamSnapshot = async (userId: string): Promise<CamSnapshot> => 
   return { properties: propertyOptions, expenses, allocations }
 }
 
+const asPresentation = (value: string | null | undefined): LeasePresentation =>
+  value === "operating" ? "operating" : "finance"
+
 export const fetchLeasePaymentTerms = async (
-  userId: string,
+  organizationId: string,
   now: Date = new Date()
 ): Promise<LeasePaymentTerm[]> => {
-  const { propertyById, leases } = await loadOwnedPortfolio(userId)
+  const { propertyById, leases } = await loadOwnedPortfolio(organizationId)
 
   return leases
     .filter((lease) => isActiveLease(lease, now))
@@ -198,25 +206,37 @@ export const fetchLeasePaymentTerms = async (
         : undefined
       const end = parseIsoDate(lease.end_date)
       const monthlyPayment = toMoney(lease.monthly_rent) ?? 0
+      const rate = toNumber(lease.incremental_borrowing_rate)
       return {
         leaseId: lease.id,
-        tenantName: lease.tenant_name?.trim() || "Unnamed tenant",
+        tenantName: lease?.tenant_name?.trim() || "Unnamed tenant",
         propertyName: property?.name ?? null,
         monthlyPayment,
         startDate: lease.start_date,
         endDate: lease.end_date,
         remainingMonths: end ? remainingWholeMonths(end, now) : 0,
+        accounting: defaultAccountingInputs({
+          incrementalBorrowingRate: rate ?? 0.05,
+          initialDirectCosts: toMoney(lease.initial_direct_costs) ?? 0,
+          prepaidRent: toMoney(lease.prepaid_rent) ?? 0,
+          leaseIncentives: toMoney(lease.lease_incentives) ?? 0,
+          presentation: asPresentation(lease.accounting_presentation),
+        }),
       }
     })
     .filter((term) => term.monthlyPayment > 0 && term.remainingMonths > 0)
 }
 
-export const fetchAuditLogs = async (userId: string): Promise<AuditLogRow[]> => {
+export const fetchAuditLogs = async (
+  organizationId: string
+): Promise<AuditLogRow[]> => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("audit_logs")
-    .select("id, user_id, action, resource_type, details, ip_address, created_at")
-    .eq("user_id", userId)
+    .select(
+      "id, user_id, organization_id, action, resource_type, details, ip_address, created_at"
+    )
+    .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(200)
 

@@ -5,7 +5,7 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { FinanceTabs } from "@/components/dashboard/finance-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { fetchLeasePaymentTerms } from "@/lib/enterprise/queries"
-import { createClient } from "@/lib/supabase/server"
+import { getOrgContext } from "@/lib/org/context"
 
 const EmptyState = ({ message }: { message: string }) => (
   <Card>
@@ -17,17 +17,14 @@ const EmptyState = ({ message }: { message: string }) => (
 )
 
 const ComplianceContent = async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const org = await getOrgContext()
 
-  if (!user) {
+  if (!org) {
     return <EmptyState message="Sign in to generate ASC 842 / IFRS 16 schedules." />
   }
 
-  const terms = await fetchLeasePaymentTerms(user.id)
-  return <ComplianceBoard terms={terms} />
+  const terms = await fetchLeasePaymentTerms(org.orgId)
+  return <ComplianceBoard terms={terms} canWrite={org.canWrite} />
 }
 
 export default function CompliancePage() {

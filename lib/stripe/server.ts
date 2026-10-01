@@ -2,6 +2,11 @@ import Stripe from "stripe"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 
+/**
+ * NEW env:
+ *   STRIPE_SECRET_KEY  Secret key for Checkout, Customer Portal, and webhooks.
+ */
+
 const secretKey = process.env.STRIPE_SECRET_KEY
 
 if (!secretKey) {
@@ -10,23 +15,17 @@ if (!secretKey) {
   )
 }
 
-// `apiVersion` intentionally omitted so the SDK uses whatever version is
-// bundled with the installed `stripe` package (currently 22.6.2 /
-// 2026-08-26.dahlia) — always matches the TypeScript types this file was
-// written against.
 export const stripe = new Stripe(secretKey ?? "", {
   typescript: true,
 })
 
-export type SubscriptionStatus =
-  | "free"
-  | Stripe.Subscription.Status
+export type SubscriptionStatus = "free" | Stripe.Subscription.Status
 
-/** Subscription statuses that grant Pro access — `trialing` intentionally included. */
 const PRO_STATUSES: ReadonlySet<string> = new Set(["active", "trialing"])
 
-export type UserSubscription = {
-  userId: string
+export type OrgSubscription = {
+  userId: string | null
+  organizationId: string | null
   status: SubscriptionStatus
   priceId: string | null
   stripeCustomerId: string | null
@@ -36,7 +35,8 @@ export type UserSubscription = {
 }
 
 type SubscriptionRow = {
-  user_id: string
+  user_id: string | null
+  organization_id: string | null
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
   status: string
@@ -44,54 +44,25 @@ type SubscriptionRow = {
   current_period_end: string | null
 }
 
-/**
- * Resolves a user's current billing status directly from the
- * `subscriptions` table (kept in sync by app/api/stripe/webhook/route.ts)
- * via the service-role client. Deliberately takes just a `userId` and
- * manages its own DB access rather than depending on a cookie-scoped
- * request context, so it can be called from anywhere on the server — a
- * Route Handler, a Server Component, or a cron job — not just inside an
- * authenticated request.
- *
- * A user with no row in `subscriptions` (never checked out) is treated as
- * `free`, not an error.
- */
-export const getUserSubscription = async (
-  userId: string
-): Promise<UserSubscription> => {
-  const supabaseAdmin = createAdminClient()
+const emptySubscription = (
+  organizationId: string | null,
+  userId: string | null
+): OrgSubscription => ({
+  userId,
+  organizationId,
+  status: "free",
+  priceId: null,
+  stripeCustomerId: null,
+  stripeSubscriptionId: null,
+  currentPeriodEnd: null,
+  isPro: false,
+})
 
-  const { data, error } = await supabaseAdmin
-    .from("subscriptions")
-    .select(
-      "user_id, stripe_customer_id, stripe_subscription_id, status, price_id, current_period_end"
-    )
-    .eq("user_id", userId)
-    .maybeSingle<SubscriptionRow>()
-
-  if (error) {
-    console.error(
-      `[Stripe] Failed to fetch subscription for user_id ${userId}:`,
-      error.message
-    )
-  }
-
-  if (!data) {
-    return {
-      userId,
-      status: "free",
-      priceId: null,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      currentPeriodEnd: null,
-      isPro: false,
-    }
-  }
-
+const fromRow = (data: SubscriptionRow): OrgSubscription => {
   const status = (data.status || "free") as SubscriptionStatus
-
   return {
-    userId,
+    userId: data.user_id,
+    organizationId: data.organization_id,
     status,
     priceId: data.price_id,
     stripeCustomerId: data.stripe_customer_id,
@@ -102,3 +73,58 @@ export const getUserSubscription = async (
     isPro: PRO_STATUSES.has(status),
   }
 }
+
+/**
+ * Billing is per organization. Falls back to the owner's user_id row for
+ * subscriptions created before org_id existed.
+ */
+export const getOrgSubscription = async (
+  organizationId: string,
+  fallbackUserId?: string
+): Promise<OrgSubscription> => {
+  const supabaseAdmin = createAdminClient()
+
+  if (organizationId) {
+    const { data, error } = await supabaseAdmin
+      .from("subscriptions")
+      .select(
+        "user_id, organization_id, stripe_customer_id, stripe_subscription_id, status, price_id, current_period_end"
+      )
+      .eq("organization_id", organizationId)
+      .maybeSingle<SubscriptionRow>()
+
+    if (error) {
+      console.error(
+        `[Stripe] Failed to fetch subscription for org ${organizationId}:`,
+        error.message
+      )
+    }
+
+    if (data) return fromRow(data)
+  }
+
+  if (!fallbackUserId) return emptySubscription(organizationId || null, null)
+
+  const { data: byUser, error: userError } = await supabaseAdmin
+    .from("subscriptions")
+    .select(
+      "user_id, organization_id, stripe_customer_id, stripe_subscription_id, status, price_id, current_period_end"
+    )
+    .eq("user_id", fallbackUserId)
+    .maybeSingle<SubscriptionRow>()
+
+  if (userError) {
+    console.error(
+      `[Stripe] Failed to fetch subscription for user_id ${fallbackUserId}:`,
+      userError.message
+    )
+  }
+
+  if (!byUser) return emptySubscription(organizationId, fallbackUserId)
+  return fromRow(byUser)
+}
+
+/** @deprecated Prefer getOrgSubscription — kept for call sites that still have only a user id. */
+export const getUserSubscription = async (
+  userId: string
+): Promise<OrgSubscription> => getOrgSubscription("", userId)

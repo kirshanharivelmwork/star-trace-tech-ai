@@ -3,7 +3,7 @@ import { AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { fetchNoticeAlerts } from "@/lib/enterprise/queries"
 import type { NoticeAlert, NoticePriority } from "@/lib/enterprise/types"
-import { createClient } from "@/lib/supabase/server"
+import { getOrgContext } from "@/lib/org/context"
 
 const PRIORITY_STYLES: Record<NoticePriority, string> = {
   critical:
@@ -119,12 +119,9 @@ export const NoticeWindowPanel = ({
 }
 
 export const NoticeWindowAlerts = async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const org = await getOrgContext()
 
-  if (!user) {
+  if (!org) {
     return (
       <Card className="border-zinc-800/80 bg-zinc-900/60 shadow-2xl backdrop-blur-xl">
         <CardContent className="flex flex-col items-center gap-2 py-8 text-center text-sm text-zinc-400">
@@ -135,6 +132,6 @@ export const NoticeWindowAlerts = async () => {
     )
   }
 
-  const alerts = await fetchNoticeAlerts(user.id)
+  const alerts = await fetchNoticeAlerts(org.orgId)
   return <NoticeWindowPanel alerts={alerts} />
 }

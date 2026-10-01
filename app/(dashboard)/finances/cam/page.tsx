@@ -5,7 +5,7 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { FinanceTabs } from "@/components/dashboard/finance-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { fetchCamSnapshot } from "@/lib/enterprise/queries"
-import { createClient } from "@/lib/supabase/server"
+import { getOrgContext } from "@/lib/org/context"
 
 const EmptyState = ({ message }: { message: string }) => (
   <Card>
@@ -17,16 +17,13 @@ const EmptyState = ({ message }: { message: string }) => (
 )
 
 const CamContent = async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const org = await getOrgContext()
 
-  if (!user) {
+  if (!org) {
     return <EmptyState message="Sign in to reconcile CAM and operating expenses." />
   }
 
-  const snapshot = await fetchCamSnapshot(user.id)
+  const snapshot = await fetchCamSnapshot(org.orgId)
   return <CamBoard snapshot={snapshot} />
 }
 

@@ -12,9 +12,11 @@ import {
   UploadCloud,
 } from "lucide-react"
 
+import { useOrg } from "@/components/providers/org-provider"
 import { useUser } from "@/components/providers/user-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { openBillingPortal } from "@/lib/org/actions"
 import { FREE_LEASE_ABSTRACT_LIMIT } from "@/lib/stripe/constants"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -91,6 +93,7 @@ export const LeaseUploader = ({
   onAnalysisComplete,
 }: LeaseUploaderProps) => {
   const { user, isLoading: isUserLoading } = useUser()
+  const org = useOrg()
   const [phase, setPhase] = useState<UploadPhase>("idle")
   const [fileName, setFileName] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -102,7 +105,7 @@ export const LeaseUploader = ({
   // authoritatively). Re-run after every completed analysis so the count
   // updates live without a page reload.
   const refreshUsage = useCallback(async () => {
-    if (!user) {
+    if (!user || !org?.orgId) {
       setUsage({ isLoading: false, isPro: false, usedCount: 0 })
       return
     }
@@ -114,11 +117,11 @@ export const LeaseUploader = ({
       supabase
         .from("lease_abstracts")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id),
+        .eq("organization_id", org.orgId),
       supabase
         .from("subscriptions")
         .select("status")
-        .eq("user_id", user.id)
+        .eq("organization_id", org.orgId)
         .maybeSingle<{ status: string }>(),
     ])
 
@@ -127,10 +130,20 @@ export const LeaseUploader = ({
       isPro: Boolean(subscriptionRow && PRO_STATUSES.has(subscriptionRow.status)),
       usedCount: count ?? 0,
     })
-  }, [user])
+  }, [user, org?.orgId])
 
   useEffect(() => {
     refreshUsage()
+  }, [refreshUsage])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("checkout") !== "success") return
+    const timer = window.setTimeout(() => {
+      refreshUsage()
+    }, 800)
+    return () => window.clearTimeout(timer)
   }, [refreshUsage])
 
   // Remembers the Storage path of the file currently being (or just)
@@ -313,7 +326,7 @@ export const LeaseUploader = ({
               <LogIn className="size-6 text-muted-foreground" />
               <p className="text-sm font-medium">Sign in to analyze a lease</p>
               <p className="text-xs text-muted-foreground">
-                Use the sign in button in the header above
+                Sign in from the login page to analyze a lease
               </p>
             </>
           ) : showUpgradePrompt ? (
@@ -343,6 +356,15 @@ export const LeaseUploader = ({
                 )}
                 Upgrade to Pro
               </Button>
+              <form
+                action={openBillingPortal}
+                className="pointer-events-auto"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Button type="submit" size="sm" variant="outline">
+                  Manage billing
+                </Button>
+              </form>
             </>
           ) : phase === "uploading" ? (
             <>

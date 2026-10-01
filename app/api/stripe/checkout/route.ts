@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server"
 
+import { getAppUrl } from "@/lib/email/from"
+import { getOrgContext } from "@/lib/org/context"
 import { stripe } from "@/lib/stripe/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 /**
- * Creates a Stripe Checkout Session for the Pro plan and returns its URL
- * for the client to redirect to. Called from
- * components/dashboard/lease-uploader.tsx once a free user hits
- * FREE_LEASE_ABSTRACT_LIMIT.
+ * NEW env:
+ *   NEXT_PUBLIC_APP_URL             Canonical origin for success/cancel URLs
+ *   NEXT_PUBLIC_STRIPE_PRO_PRICE_ID Pro plan price
  */
 export async function POST(request: Request) {
   const priceId = process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID
@@ -33,35 +34,38 @@ export async function POST(request: Request) {
     })
   }
 
-  const origin = new URL(request.url).origin
+  const org = await getOrgContext()
+  if (!org) {
+    return new Response("Workspace is not ready.", { status: 403 })
+  }
 
-  // Reuse an existing Stripe customer if this user has one already, so
-  // repeat checkouts (e.g. after a cancellation) don't create duplicate
-  // Stripe customers for the same person. This is a plain read, so the
-  // admin client is used purely for convenience, not to bypass anything
-  // security-sensitive — the user's identity was already verified above.
+  const origin = getAppUrl() || new URL(request.url).origin
+
   const supabaseAdmin = createAdminClient()
   const { data: existingSubscription } = await supabaseAdmin
     .from("subscriptions")
     .select("stripe_customer_id")
-    .eq("user_id", user.id)
+    .eq("organization_id", org.orgId)
     .maybeSingle<{ stripe_customer_id: string | null }>()
+
+  const existingCustomer = existingSubscription?.stripe_customer_id
+    ? existingSubscription.stripe_customer_id
+    : null
 
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       client_reference_id: user.id,
-      ...(existingSubscription?.stripe_customer_id
-        ? { customer: existingSubscription.stripe_customer_id }
+      ...(existingCustomer
+        ? { customer: existingCustomer }
         : { customer_email: user.email }),
       line_items: [{ price: priceId, quantity: 1 }],
-      // Stamping userId on the subscription itself (not just the checkout
-      // session) means later `customer.subscription.updated/deleted`
-      // webhook events can resolve the owning user without needing to
-      // look up the original checkout session.
-      subscription_data: { metadata: { userId: user.id } },
-      success_url: `${origin}/?checkout=success`,
-      cancel_url: `${origin}/?checkout=cancelled`,
+      metadata: { userId: user.id, orgId: org.orgId },
+      subscription_data: {
+        metadata: { userId: user.id, orgId: org.orgId },
+      },
+      success_url: `${origin}/app?checkout=success`,
+      cancel_url: `${origin}/app?checkout=cancelled`,
     })
 
     if (!session.url) {

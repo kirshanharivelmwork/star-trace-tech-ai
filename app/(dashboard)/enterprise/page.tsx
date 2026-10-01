@@ -19,7 +19,7 @@ import {
   fetchNoticeAlerts,
 } from "@/lib/enterprise/queries"
 import { fetchPortfolioIntelligence } from "@/lib/telemetry/queries"
-import { createClient } from "@/lib/supabase/server"
+import { getOrgContext } from "@/lib/org/context"
 
 const panelEmpty = (message: string) => (
   <Card>
@@ -38,12 +38,9 @@ const ZERO_COUNTS: Record<EnterpriseTab, number> = {
 }
 
 const EnterpriseContent = async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const org = await getOrgContext()
 
-  if (!user) {
+  if (!org) {
     const message = "Sign in to load this section of the command center."
     return (
       <EnterpriseCommandCenter
@@ -59,11 +56,11 @@ const EnterpriseContent = async () => {
   }
 
   const [snapshot, cam, terms, logs, alerts] = await Promise.all([
-    fetchPortfolioIntelligence(user.id),
-    fetchCamSnapshot(user.id),
-    fetchLeasePaymentTerms(user.id),
-    fetchAuditLogs(user.id),
-    fetchNoticeAlerts(user.id),
+    fetchPortfolioIntelligence(org.orgId, org.userId),
+    fetchCamSnapshot(org.orgId),
+    fetchLeasePaymentTerms(org.orgId),
+    fetchAuditLogs(org.orgId),
+    fetchNoticeAlerts(org.orgId),
   ])
 
   const criticalNotices = alerts.filter(
@@ -83,7 +80,7 @@ const EnterpriseContent = async () => {
       panels={{
         telemetry: <TelemetryPanel snapshot={snapshot} />,
         cam: <CamPanel snapshot={cam} />,
-        compliance: <CompliancePanel terms={terms} />,
+        compliance: <CompliancePanel terms={terms} canWrite={org.canWrite} />,
         security: <SecurityPanel alerts={alerts} logs={logs} />,
       }}
     />

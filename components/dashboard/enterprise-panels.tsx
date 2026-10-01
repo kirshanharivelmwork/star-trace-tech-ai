@@ -61,8 +61,14 @@ export const CamPanel = ({ snapshot }: { snapshot: CamSnapshot }) => {
   return <CamBoard snapshot={snapshot} />
 }
 
-export const CompliancePanel = ({ terms }: { terms: LeasePaymentTerm[] }) => {
-  return <ComplianceBoard terms={terms} />
+export const CompliancePanel = ({
+  terms,
+  canWrite = false,
+}: {
+  terms: LeasePaymentTerm[]
+  canWrite?: boolean
+}) => {
+  return <ComplianceBoard terms={terms} canWrite={canWrite} />
 }
 
 export const SecurityPanel = ({

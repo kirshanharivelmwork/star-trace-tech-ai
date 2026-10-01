@@ -61,6 +61,7 @@ export const TenantRiskTable = ({ rows, counts }: TenantRiskTableProps) => {
                   <th className="px-4 py-3 font-medium">Expiry</th>
                   <th className="px-4 py-3 font-medium">Days left</th>
                   <th className="px-4 py-3 font-medium">Rent / mo</th>
+                  <th className="px-4 py-3 font-medium">SF</th>
                   <th className="px-4 py-3 font-medium">Churn</th>
                   <th className="px-4 py-3 font-medium">Risk</th>
                 </tr>
@@ -85,6 +86,11 @@ export const TenantRiskTable = ({ rows, counts }: TenantRiskTableProps) => {
                     </td>
                     <td className="px-4 py-3 text-zinc-200">
                       {formatUsd(row.monthlyRent)}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-200">
+                      {row.squareFootage == null
+                        ? "—"
+                        : new Intl.NumberFormat("en-US").format(row.squareFootage)}
                     </td>
                     <td className="px-4 py-3 text-zinc-400">
                       {row.churnScore == null

@@ -16,6 +16,12 @@
  *   of a real date/term, and that text must never crash date/number
  *   parsing below.
  */
+export type PortfolioNoticeDeadline = {
+  label?: string | null
+  targetDate?: string | null
+  noticeDays?: number | null
+}
+
 export type PortfolioLeaseAbstract = {
   landlordName?: string | null
   tenantName?: string | null
@@ -28,6 +34,12 @@ export type PortfolioLeaseAbstract = {
   camServiceChargeTerms?: string | null
   terminationAndBreakClauses?: string[] | null
   keyObligationsAndRestrictions?: string[] | null
+  premisesSquareFootage?: number | string | null
+  monthlyBaseRentAmount?: number | string | null
+  rentPaymentFrequency?: string | null
+  propertyName?: string | null
+  noticeDeadlines?: PortfolioNoticeDeadline[] | null
+  discountRateAnnual?: number | string | null
 }
 
 export type PortfolioLeaseRow = {
@@ -36,6 +48,7 @@ export type PortfolioLeaseRow = {
   abstract_data: PortfolioLeaseAbstract | null
   /** Only present/needed when a caller (e.g. the cron route) selects it explicitly. */
   user_id?: string
+  organization_id?: string | null
 }
 
 const PLACEHOLDER_PATTERN =
@@ -62,6 +75,140 @@ export const parseLeaseDate = (
   const parsed = new Date(normalized)
 
   return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+/** Calendar date as YYYY-MM-DD, or null. */
+export const toIsoDateString = (date: Date | null): string | null => {
+  if (!date) return null
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+export const normalizeMatchKey = (value: string | null | undefined): string =>
+  (value ?? "").trim().toLowerCase().replace(/\s+/g, " ")
+
+/**
+ * Best-effort square footage from a number or free-text phrase
+ * ("12,500 RSF", "approximately 8,000 sq ft").
+ */
+export const parseSquareFootage = (
+  value: string | number | null | undefined
+): number | null => {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.round(value)
+  }
+  if (typeof value !== "string" || isPlaceholder(value)) return null
+
+  const match = value.replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*(?:sq\.?\s*ft|sf|rsf|nra)?/i)
+  if (!match) return null
+  const parsed = Number.parseFloat(match[1])
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null
+}
+
+/**
+ * Always returns a monthly USD/GBP-style numeric rent. Annual / yearly
+ * figures are divided by 12; quarterly by 4; weekly × 52 / 12.
+ */
+export const parseMonthlyRent = (
+  amount: string | number | null | undefined,
+  frequency?: string | null
+): number | null => {
+  const haystack = [
+    typeof amount === "number" ? String(amount) : (amount ?? ""),
+    frequency ?? "",
+  ]
+    .join(" ")
+    .toLowerCase()
+
+  let numeric: number | null = null
+  if (typeof amount === "number" && Number.isFinite(amount) && amount > 0) {
+    numeric = amount
+  } else if (typeof amount === "string" && !isPlaceholder(amount)) {
+    const match = amount.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/)
+    if (match) {
+      const parsed = Number.parseFloat(match[1])
+      if (Number.isFinite(parsed) && parsed > 0) numeric = parsed
+    }
+  }
+
+  if (numeric == null) return null
+
+  const isAnnual = /per\s*annum|\/\s*year|annual|yearly|p\.?a\.?/i.test(haystack)
+  const isQuarterly = /quarter/i.test(haystack)
+  const isWeekly = /week/i.test(haystack)
+  const isDaily = /day|daily/i.test(haystack)
+
+  if (isAnnual) return Math.round((numeric / 12) * 100) / 100
+  if (isQuarterly) return Math.round((numeric / 3) * 100) / 100
+  if (isWeekly) return Math.round(((numeric * 52) / 12) * 100) / 100
+  if (isDaily) return Math.round((numeric * 365.25) / 12 * 100) / 100
+  return Math.round(numeric * 100) / 100
+}
+
+export const parseAnnualRate = (
+  value: string | number | null | undefined
+): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 1 ? value / 100 : value
+  }
+  if (typeof value !== "string" || isPlaceholder(value)) return null
+  const match = value.replace(/%/g, "").match(/(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  const parsed = Number.parseFloat(match[1])
+  if (!Number.isFinite(parsed)) return null
+  return parsed > 1 ? parsed / 100 : parsed
+}
+
+export type ParsedNoticeDeadline = {
+  label: string
+  targetDate: string
+  noticeDays: number | null
+}
+
+export const parseNoticeDeadlines = (
+  abstract: PortfolioLeaseAbstract
+): ParsedNoticeDeadline[] => {
+  const results: ParsedNoticeDeadline[] = []
+  const seen = new Set<string>()
+
+  const push = (label: string, date: Date | null, noticeDays: number | null) => {
+    const iso = toIsoDateString(date)
+    if (!iso) return
+    const key = `${iso}:${label.trim().toLowerCase()}`
+    if (seen.has(key)) return
+    seen.add(key)
+    results.push({
+      label: label.trim() || "Notice deadline",
+      targetDate: iso,
+      noticeDays,
+    })
+  }
+
+  for (const deadline of abstract.noticeDeadlines ?? []) {
+    const date = parseLeaseDate(deadline.targetDate)
+    const days =
+      typeof deadline.noticeDays === "number" && Number.isFinite(deadline.noticeDays)
+        ? Math.round(deadline.noticeDays)
+        : null
+    push(deadline.label ?? "Notice deadline", date, days)
+  }
+
+  for (const clause of abstract.terminationAndBreakClauses ?? []) {
+    if (isPlaceholder(clause)) continue
+    const date = parseLeaseDate(clause)
+    const daysMatch = clause.match(/(\d+)\s*-?\s*day/i)
+    const days = daysMatch ? Number.parseInt(daysMatch[1], 10) : null
+    push(clause.slice(0, 80), date, Number.isFinite(days) ? days : null)
+  }
+
+  const rentReview = parseLeaseDate(abstract.rentReviewDetails)
+  if (rentReview) {
+    push("Rent review", rentReview, null)
+  }
+
+  return results
 }
 
 /**
@@ -436,6 +583,8 @@ export type TenantSummary = {
   activeLeaseCount: number
   totalLeaseCount: number
   premisesAddresses: string[]
+  /** Sum of known square footage across this tenant's leases; null if none. */
+  squareFootage: number | null
   nearestExpiration: Date | null
   riskCategory: RiskCategory
 }
@@ -449,10 +598,6 @@ export type TenantSummary = {
  * they're still visible rather than silently dropped or wrongly merged
  * with an actual named tenant.
  *
- * Note: the lease abstraction schema (app/api/lease/schema.ts) does not
- * currently capture square footage / floor area for the leased premises,
- * so it cannot be included here — callers should render that column as
- * "Not tracked" rather than inventing a value.
  */
 export const getTenantSummaries = (
   records: PortfolioLeaseRow[],
@@ -481,12 +626,20 @@ export const getTenantSummaries = (
     const addresses = new Set<string>()
     let activeLeaseCount = 0
     let nearestExpiration: Date | null = null
+    let squareFootageSum = 0
+    let hasSquareFootage = false
 
     for (const lease of leases) {
       const abstract = lease.abstract_data ?? {}
 
       if (!isPlaceholder(abstract.premisesAddress)) {
         addresses.add(abstract.premisesAddress!.trim())
+      }
+
+      const sf = parseSquareFootage(abstract.premisesSquareFootage)
+      if (sf != null) {
+        squareFootageSum += sf
+        hasSquareFootage = true
       }
 
       const expiration = parseLeaseDate(abstract.expirationDate)
@@ -506,6 +659,7 @@ export const getTenantSummaries = (
       activeLeaseCount,
       totalLeaseCount: leases.length,
       premisesAddresses: [...addresses],
+      squareFootage: hasSquareFootage ? squareFootageSum : null,
       nearestExpiration,
       riskCategory: categorizeLeaseExpirationRisk(nearestExpiration, now),
     })

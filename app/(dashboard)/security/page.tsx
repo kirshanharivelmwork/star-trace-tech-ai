@@ -4,7 +4,7 @@ import { AuditStream } from "@/components/dashboard/audit-stream"
 import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { fetchAuditLogs } from "@/lib/enterprise/queries"
-import { createClient } from "@/lib/supabase/server"
+import { getOrgContext } from "@/lib/org/context"
 
 const EmptyState = ({ message }: { message: string }) => (
   <Card>
@@ -16,16 +16,13 @@ const EmptyState = ({ message }: { message: string }) => (
 )
 
 const SecurityContent = async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const org = await getOrgContext()
 
-  if (!user) {
+  if (!org) {
     return <EmptyState message="Sign in to open the institutional data room." />
   }
 
-  const rows = await fetchAuditLogs(user.id)
+  const rows = await fetchAuditLogs(org.orgId)
   return <AuditStream rows={rows} />
 }
 

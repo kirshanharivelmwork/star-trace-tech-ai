@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { FileText, LogIn } from "lucide-react"
 
+import { useOrg } from "@/components/providers/org-provider"
 import { useUser } from "@/components/providers/user-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,6 +32,7 @@ export const AbstractHistory = ({
   onSelect,
 }: AbstractHistoryProps) => {
   const { user, isLoading: isUserLoading } = useUser()
+  const org = useOrg()
   const [records, setRecords] = useState<LeaseAbstractRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +42,7 @@ export const AbstractHistory = ({
     // avoids a flash of "no leases" for a user who is actually signed in.
     if (isUserLoading) return
 
-    if (!user) {
+    if (!user || !org?.orgId) {
       setRecords([])
       setIsLoading(false)
       setError(null)
@@ -56,11 +58,8 @@ export const AbstractHistory = ({
       const supabase = createClient()
       const { data, error: fetchError } = await supabase
         .from("lease_abstracts")
-        .select("id, user_id, file_name, storage_path, abstract_data, created_at")
-        // RLS already scopes rows to the current user, but filtering
-        // explicitly keeps this query correct and self-documenting even if
-        // RLS policies change.
-        .eq("user_id", user.id)
+        .select("id, user_id, organization_id, lease_id, file_name, storage_path, abstract_data, created_at")
+        .eq("organization_id", org.orgId)
         .order("created_at", { ascending: false })
 
       if (isCancelled) return
@@ -80,7 +79,7 @@ export const AbstractHistory = ({
     return () => {
       isCancelled = true
     }
-  }, [refreshKey, user, isUserLoading])
+  }, [user, isUserLoading, org?.orgId, refreshKey])
 
   return (
     <Card className="flex h-full min-h-[32rem] flex-col">

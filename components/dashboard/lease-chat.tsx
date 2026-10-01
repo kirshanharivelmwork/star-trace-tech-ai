@@ -15,6 +15,7 @@ type LeaseChatProps = {
   /** Current lease's extracted data, sent as `leaseContext` on every request. */
   abstractData: DeepPartial<LeaseAbstract> | undefined
   fileName?: string | null
+  leaseAbstractId?: string | null
 }
 
 const EMPTY_STATE_PROMPTS = [
@@ -30,7 +31,7 @@ const EMPTY_STATE_PROMPTS = [
  * message — the server detects that field and swaps in a strict,
  * lease-only system prompt instead of the general one.
  */
-export const LeaseChat = ({ abstractData, fileName }: LeaseChatProps) => {
+export const LeaseChat = ({ abstractData, fileName, leaseAbstractId }: LeaseChatProps) => {
   const { messages, sendMessage, status, stop } = useChat()
   const [input, setInput] = useState("")
 
@@ -46,7 +47,15 @@ export const LeaseChat = ({ abstractData, fileName }: LeaseChatProps) => {
     // Per-call `body` is merged into the request on top of any
     // transport-level body, so this always reflects the latest
     // `abstractData` prop rather than whatever was current on mount.
-    sendMessage({ text: trimmed }, { body: { leaseContext: abstractData } })
+    sendMessage(
+      { text: trimmed },
+      {
+        body: {
+          leaseAbstractId: leaseAbstractId ?? undefined,
+          leaseContext: leaseAbstractId ? undefined : abstractData,
+        },
+      }
+    )
     setInput("")
   }
 

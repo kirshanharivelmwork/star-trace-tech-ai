@@ -8,7 +8,7 @@ import { cookies } from "next/headers"
  *
  * `setAll` may fail here (e.g. when called from a Server Component, which
  * cannot set cookies). That's expected and safe to ignore as long as
- * `middleware.ts` is refreshing the session on every request.
+ * `proxy.ts` is refreshing the session on every request.
  */
 export const createClient = async () => {
   const cookieStore = await cookies()
@@ -26,7 +26,7 @@ export const createClient = async () => {
             )
           } catch {
             // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
+            // This can be ignored if you have proxy.ts refreshing
             // user sessions.
           }
         },

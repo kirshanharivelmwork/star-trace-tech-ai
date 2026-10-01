@@ -11,7 +11,9 @@
 export type PropertyRow = {
   id: string
   user_id: string
+  organization_id?: string | null
   name: string | null
+  address?: string | null
   valuation: number | string | null
   total_nra: number | string | null
   created_at: string | null
@@ -27,6 +29,12 @@ export type LeaseRow = {
   square_footage: number | string | null
   monthly_rent: number | string | null
   created_at: string | null
+  incremental_borrowing_rate?: number | string | null
+  initial_direct_costs?: number | string | null
+  prepaid_rent?: number | string | null
+  lease_incentives?: number | string | null
+  accounting_presentation?: string | null
+  needs_review?: boolean | null
 }
 
 export type TenantRiskTelemetryRow = {

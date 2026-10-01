@@ -11,6 +11,7 @@ import {
   calendarDaysUntil,
   parseIsoDate,
 } from "@/lib/enterprise/metrics"
+import { getAppUrl, getResendFromAddress } from "@/lib/email/from"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 // Cron jobs must never be statically cached/prerendered — always run live.
@@ -22,7 +23,96 @@ export const maxDuration = 60
 // what fails loudly (and is logged, not thrown) if RESEND_API_KEY is unset.
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-const DASHBOARD_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+const DASHBOARD_URL = `${getAppUrl()}/app`
+const FROM_ADDRESS = getResendFromAddress()
+
+const ADMIN_ROLES = new Set(["owner", "admin"])
+
+const resolveOrgAdminEmails = async (
+  supabaseAdmin: SupabaseClient,
+  organizationId: string | null | undefined
+): Promise<string[]> => {
+  if (!organizationId) return []
+
+  const { data, error } = await supabaseAdmin
+    .from("organization_members")
+    .select("user_id, role")
+    .eq("org_id", organizationId)
+
+  if (error) {
+    console.error("[CRON] organization_members:", error.message)
+    return []
+  }
+
+  const userIds = (data ?? [])
+    .filter((row: { role: string | null }) =>
+      ADMIN_ROLES.has((row.role ?? "").toLowerCase())
+    )
+    .map((row: { user_id: string }) => row.user_id)
+
+  const emails: string[] = []
+  for (const userId of userIds) {
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
+      if (userData?.user?.email) emails.push(userData.user.email)
+    } catch (lookupError) {
+      console.error("[CRON] getUserById failed:", lookupError)
+    }
+  }
+  return [...new Set(emails)]
+}
+
+const wasDispatched = async (
+  supabaseAdmin: SupabaseClient,
+  params: {
+    organizationId: string | null
+    leaseId?: string | null
+    abstractId?: string | null
+    alertType: string
+    thresholdDays: number
+  }
+): Promise<boolean> => {
+  if (!params.organizationId) return false
+  let query = supabaseAdmin
+    .from("alert_dispatches")
+    .select("id", { head: true, count: "exact" })
+    .eq("organization_id", params.organizationId)
+    .eq("alert_type", params.alertType)
+    .eq("threshold_days", params.thresholdDays)
+
+  if (params.leaseId) query = query.eq("lease_id", params.leaseId)
+  if (params.abstractId) query = query.eq("abstract_id", params.abstractId)
+
+  const { count, error } = await query
+  if (error) {
+    console.error("[CRON] alert_dispatches lookup:", error.message)
+    return false
+  }
+  return (count ?? 0) > 0
+}
+
+const markDispatched = async (
+  supabaseAdmin: SupabaseClient,
+  params: {
+    organizationId: string | null
+    leaseId?: string | null
+    abstractId?: string | null
+    alertType: string
+    thresholdDays: number
+  }
+) => {
+  if (!params.organizationId) return
+  const { error } = await supabaseAdmin.from("alert_dispatches").insert({
+    organization_id: params.organizationId,
+    lease_id: params.leaseId ?? null,
+    abstract_id: params.abstractId ?? null,
+    alert_type: params.alertType,
+    threshold_days: params.thresholdDays,
+  })
+  if (error) {
+    console.error("[CRON] alert_dispatches insert:", error.message)
+  }
+}
 
 const escapeHtml = (value: string) =>
   value
@@ -113,30 +203,33 @@ const buildAlertEmailHtml = (params: {
  */
 const sendLeaseAlertEmail = async (params: {
   userId: string
+  overrideEmail?: string
   alert: LeaseAlert
   supabaseAdmin: SupabaseClient
 }) => {
-  const { userId, alert, supabaseAdmin } = params
+  const { userId, alert, supabaseAdmin, overrideEmail } = params
 
   try {
-    const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
+    let recipientEmail = overrideEmail
+    if (!recipientEmail) {
+      const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
 
-    if (error || !data?.user?.email) {
-      console.error(
-        `[CRON] Skipping email for user_id ${userId} — could not resolve an email address:`,
-        error?.message ?? "user has no email on file"
-      )
-      return
+      if (error || !data?.user?.email) {
+        console.error(
+          `[CRON] Skipping email for user_id ${userId} — could not resolve an email address:`,
+          error?.message ?? "user has no email on file"
+        )
+        return
+      }
+      recipientEmail = data.user.email
     }
-
-    const recipientEmail = data.user.email
 
     console.log(
       `[CRON] Sending email to user_id: ${userId} (${recipientEmail}) — Warning, lease "${alert.fileName}" ${alert.message} (${alert.daysUntil} day(s) away)`
     )
 
     const { error: sendError } = await resend.emails.send({
-      from: "StarFlow Alerts <onboarding@resend.dev>",
+      from: FROM_ADDRESS,
       to: recipientEmail,
       subject: `⚠️ Action Required: Lease Deadline Alert (${alert.fileName})`,
       html: buildAlertEmailHtml({
@@ -178,6 +271,7 @@ type LeaseCronRow = {
 type PropertyCronRow = {
   id: string
   user_id: string | null
+  organization_id: string | null
   name: string | null
 }
 
@@ -247,29 +341,32 @@ const buildNoticeWindowEmailHtml = (params: {
 
 const sendNoticeWindowEmail = async (params: {
   userId: string
+  overrideEmail?: string
   tenantName: string
   propertyName: string
   targetDate: Date
   daysUntil: number
   supabaseAdmin: SupabaseClient
 }) => {
-  const { userId, supabaseAdmin } = params
+  const { userId, supabaseAdmin, overrideEmail } = params
 
   try {
-    const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
+    let recipientEmail = overrideEmail
+    if (!recipientEmail) {
+      const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
 
-    if (error || !data?.user?.email) {
-      console.error(
-        `[CRON] Skipping notice email for user_id ${userId} — could not resolve an email address:`,
-        error?.message ?? "user has no email on file"
-      )
-      return
+      if (error || !data?.user?.email) {
+        console.error(
+          `[CRON] Skipping notice email for user_id ${userId} — could not resolve an email address:`,
+          error?.message ?? "user has no email on file"
+        )
+        return
+      }
+      recipientEmail = data.user.email
     }
 
-    const recipientEmail = data.user.email
-
     const { error: sendError } = await resend.emails.send({
-      from: "StarFlow Alerts <onboarding@resend.dev>",
+      from: FROM_ADDRESS,
       to: recipientEmail,
       subject: `⚠️ Action Required: Notice window (${params.tenantName})`,
       html: buildNoticeWindowEmailHtml({
@@ -345,7 +442,7 @@ const processNoticeWindows = async (
   if (propertyIds.length > 0) {
     const { data: propertyData, error: propertyError } = await supabaseAdmin
       .from("properties")
-      .select("id, user_id, name")
+      .select("id, user_id, organization_id, name")
       .in("id", propertyIds)
 
     if (propertyError) {
@@ -381,21 +478,57 @@ const processNoticeWindows = async (
       ? propertyById.get(lease.property_id)
       : undefined
     const userId = property?.user_id
+    const organizationId = property?.organization_id
 
-    if (!userId) {
+    if (!userId && !organizationId) {
       console.warn(
         `[CRON] Skipping notice window ${window.id} — could not resolve property owner.`
       )
       continue
     }
 
-    await sendNoticeWindowEmail({
-      userId,
-      tenantName: lease?.tenant_name?.trim() || "Unnamed tenant",
-      propertyName: property?.name?.trim() || "Unassigned asset",
-      targetDate,
-      daysUntil,
-      supabaseAdmin,
+    if (
+      await wasDispatched(supabaseAdmin, {
+        organizationId: organizationId ?? null,
+        leaseId: window.lease_id,
+        alertType: "notice_window",
+        thresholdDays: daysUntil,
+      })
+    ) {
+      continue
+    }
+
+    const adminEmails = await resolveOrgAdminEmails(supabaseAdmin, organizationId)
+    const recipients = adminEmails.length > 0 ? adminEmails : null
+
+    if (recipients) {
+      for (const email of recipients) {
+        await sendNoticeWindowEmail({
+          userId: userId ?? "org",
+          overrideEmail: email,
+          tenantName: lease?.tenant_name?.trim() || "Unnamed tenant",
+          propertyName: property?.name?.trim() || "Unassigned asset",
+          targetDate,
+          daysUntil,
+          supabaseAdmin,
+        })
+      }
+    } else if (userId) {
+      await sendNoticeWindowEmail({
+        userId,
+        tenantName: lease?.tenant_name?.trim() || "Unnamed tenant",
+        propertyName: property?.name?.trim() || "Unassigned asset",
+        targetDate,
+        daysUntil,
+        supabaseAdmin,
+      })
+    }
+
+    await markDispatched(supabaseAdmin, {
+      organizationId: organizationId ?? null,
+      leaseId: window.lease_id,
+      alertType: "notice_window",
+      thresholdDays: daysUntil,
     })
     noticeAlertsSent += 1
   }
@@ -439,7 +572,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("lease_abstracts")
-    .select("id, file_name, abstract_data, user_id")
+    .select("id, file_name, abstract_data, user_id, organization_id")
 
   if (error) {
     console.error("[CRON] Failed to fetch lease_abstracts:", error.message)
@@ -461,19 +594,48 @@ export async function GET(request: Request) {
 
   let sentCount = 0
   for (const alert of alerts) {
-    const userId = recordsById.get(alert.recordId)?.user_id
+    const record = recordsById.get(alert.recordId)
+    const userId = record?.user_id
+    const organizationId = record?.organization_id ?? null
 
-    if (!userId) {
+    if (!userId && !organizationId) {
       console.warn(
-        `[CRON] Skipping alert for "${alert.fileName}" — record has no user_id.`
+        `[CRON] Skipping alert for "${alert.fileName}" — record has no user_id or org.`
       )
       continue
     }
 
-    // Individual send failures are caught and logged inside
-    // sendLeaseAlertEmail itself, so one bad recipient/API error never
-    // aborts the loop for the rest of the day's alerts.
-    await sendLeaseAlertEmail({ userId, alert, supabaseAdmin })
+    if (
+      await wasDispatched(supabaseAdmin, {
+        organizationId,
+        abstractId: alert.recordId,
+        alertType: alert.type,
+        thresholdDays: alert.daysUntil,
+      })
+    ) {
+      continue
+    }
+
+    const adminEmails = await resolveOrgAdminEmails(supabaseAdmin, organizationId)
+    if (adminEmails.length > 0) {
+      for (const email of adminEmails) {
+        await sendLeaseAlertEmail({
+          userId: userId ?? "org",
+          overrideEmail: email,
+          alert,
+          supabaseAdmin,
+        })
+      }
+    } else if (userId) {
+      await sendLeaseAlertEmail({ userId, alert, supabaseAdmin })
+    }
+
+    await markDispatched(supabaseAdmin, {
+      organizationId,
+      abstractId: alert.recordId,
+      alertType: alert.type,
+      thresholdDays: alert.daysUntil,
+    })
     sentCount += 1
   }
 

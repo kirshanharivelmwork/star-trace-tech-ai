@@ -7,7 +7,7 @@ import { IntelligenceMetrics } from "@/components/dashboard/intelligence-metrics
 import { TenantRiskTable } from "@/components/dashboard/tenant-risk-table"
 import { Card, CardContent } from "@/components/ui/card"
 import { fetchPortfolioIntelligence } from "@/lib/telemetry/queries"
-import { createClient } from "@/lib/supabase/server"
+import { getOrgContext } from "@/lib/org/context"
 
 const EmptyState = ({ message }: { message: string }) => (
   <Card>
@@ -19,16 +19,13 @@ const EmptyState = ({ message }: { message: string }) => (
 )
 
 const AnalyticsContent = async () => {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const org = await getOrgContext()
 
-  if (!user) {
+  if (!org) {
     return <EmptyState message="Sign in to see corporate intelligence." />
   }
 
-  const snapshot = await fetchPortfolioIntelligence(user.id)
+  const snapshot = await fetchPortfolioIntelligence(org.orgId, org.userId)
   const hasAnything =
     snapshot.propertyCount > 0 ||
     snapshot.activeLeaseCount > 0 ||
@@ -37,7 +34,7 @@ const AnalyticsContent = async () => {
 
   if (!hasAnything) {
     return (
-      <EmptyState message="No telemetry yet — properties, leases, and tenant_risk_telemetry are empty for this account." />
+      <EmptyState message="No leases yet — upload a PDF on Overview to create the first property and lease record." />
     )
   }
 

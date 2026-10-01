@@ -45,39 +45,41 @@ const SUMMARY_ACTIVE_KEYS = [
   "total_leases",
 ]
 
-const asLease = (row: LeaseRow): LeaseRow => row
-
 /**
- * Server-only fetch of the corporate intelligence tables for the signed-in
- * user. Called from Server Components (not a Server Action — this is a
- * read). Properties are the tenancy boundary (`user_id`); leases and
- * telemetry hang off those rows via `property_id` / `lease_id`.
+ * Server-only fetch of the corporate intelligence tables for the active
+ * organization. Properties are the tenancy boundary (`organization_id`);
+ * leases and telemetry hang off those rows via `property_id` / `lease_id`.
  */
 export const fetchPortfolioIntelligence = async (
-  userId: string
+  organizationId: string,
+  ownerUserId?: string
 ): Promise<IntelligenceSnapshot> => {
   const supabase = await createClient()
   const now = new Date()
 
-  const { data: summaryData, error: summaryError } = await supabase
-    .from("portfolio_metrics_summary")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle()
+  let summary: PortfolioMetricsSummaryRow | null = null
+  if (ownerUserId) {
+    const { data: summaryData, error: summaryError } = await supabase
+      .from("portfolio_metrics_summary")
+      .select("*")
+      .eq("user_id", ownerUserId)
+      .maybeSingle()
 
-  if (summaryError) {
-    console.error(
-      "[telemetry] portfolio_metrics_summary:",
-      summaryError.message
-    )
+    if (summaryError) {
+      console.error(
+        "[telemetry] portfolio_metrics_summary:",
+        summaryError.message
+      )
+    }
+    summary = (summaryData ?? null) as PortfolioMetricsSummaryRow | null
   }
-
-  const summary = (summaryData ?? null) as PortfolioMetricsSummaryRow | null
 
   const { data: propertyData, error: propertyError } = await supabase
     .from("properties")
-    .select("id, user_id, name, valuation, total_nra, created_at")
-    .eq("user_id", userId)
+    .select(
+      "id, user_id, organization_id, name, address, valuation, total_nra, created_at"
+    )
+    .eq("organization_id", organizationId)
 
   if (propertyError) {
     console.error("[telemetry] properties:", propertyError.message)
@@ -92,14 +94,14 @@ export const fetchPortfolioIntelligence = async (
     const { data: leaseData, error: leaseError } = await supabase
       .from("leases")
       .select(
-        "id, property_id, tenant_name, status, start_date, end_date, square_footage, monthly_rent, created_at"
+        "id, property_id, tenant_name, status, start_date, end_date, square_footage, monthly_rent, created_at, needs_review"
       )
       .in("property_id", propertyIds)
 
     if (leaseError) {
       console.error("[telemetry] leases:", leaseError.message)
     } else {
-      leases = (leaseData ?? []).map(asLease)
+      leases = (leaseData ?? []) as LeaseRow[]
     }
   }
 
@@ -119,8 +121,11 @@ export const fetchPortfolioIntelligence = async (
   }
 
   const activeLeases = leases.filter((lease) => isActiveLease(lease, now))
-  const computedNra = properties.reduce((sum, property) => {
+  const computedNraFromProperties = properties.reduce((sum, property) => {
     return sum + (toNumber(property.total_nra) ?? 0)
+  }, 0)
+  const computedNraFromLeases = leases.reduce((sum, lease) => {
+    return sum + (toNumber(lease.square_footage) ?? 0)
   }, 0)
   const computedValuation = properties.reduce((sum, property) => {
     return sum + (toNumber(property.valuation) ?? 0)
@@ -131,7 +136,11 @@ export const fetchPortfolioIntelligence = async (
     (computedValuation > 0 ? computedValuation : null)
   const nra =
     readNumericField(summary ?? undefined, SUMMARY_NRA_KEYS) ??
-    (computedNra > 0 ? computedNra : null)
+    (computedNraFromProperties > 0
+      ? computedNraFromProperties
+      : computedNraFromLeases > 0
+        ? computedNraFromLeases
+        : null)
   const waltYears =
     readNumericField(summary ?? undefined, SUMMARY_WALT_KEYS) ??
     calculateWaltYears(activeLeases, now)
@@ -141,28 +150,36 @@ export const fetchPortfolioIntelligence = async (
   const quarterlyFunnel = quarterlyExpirationFunnel(activeLeases, now)
 
   const leaseById = new Map(leases.map((lease) => [lease.id, lease]))
-  const tenantRisk: TenantRiskRow[] = telemetry.map((row) => {
-    const lease = row.lease_id ? leaseById.get(row.lease_id) : undefined
-    const property = lease?.property_id
+  const telemetryByLease = new Map(
+    telemetry
+      .filter((row) => row.lease_id)
+      .map((row) => [row.lease_id as string, row])
+  )
+
+  const tenantRisk: TenantRiskRow[] = leases.map((lease) => {
+    const row = telemetryByLease.get(lease.id)
+    const property = lease.property_id
       ? propertyById.get(lease.property_id)
       : undefined
-    const churnScore = toNumber(row.churn_score)
-    const expirationDate = toDate(lease?.end_date ?? null)
-    const risk = classifyRenewalRisk(row.risk_level, churnScore)
+    const churnScore = toNumber(row?.churn_score ?? null)
+    const expirationDate = toDate(lease.end_date ?? null)
+    const risk = row
+      ? classifyRenewalRisk(row.risk_level, churnScore)
+      : classifyRenewalRisk(null, expirationDate ? riskFromExpiry(expirationDate, now) : null)
 
     return {
-      telemetryId: row.id,
-      leaseId: row.lease_id,
-      tenantName: lease?.tenant_name?.trim() || "Unnamed tenant",
+      telemetryId: row?.id ?? `lease:${lease.id}`,
+      leaseId: lease.id,
+      tenantName: lease.tenant_name?.trim() || "Unnamed tenant",
       propertyName: property?.name ?? null,
       risk,
-      riskLevelRaw: row.risk_level,
+      riskLevelRaw: row?.risk_level ?? null,
       churnScore,
       expirationDate,
       daysUntilExpiry: expirationDate ? daysUntil(expirationDate, now) : null,
-      monthlyRent: toNumber(lease?.monthly_rent ?? null),
-      squareFootage: toNumber(lease?.square_footage ?? null),
-      updatedAt: row.updated_at,
+      monthlyRent: toNumber(lease.monthly_rent ?? null),
+      squareFootage: toNumber(lease.square_footage ?? null),
+      updatedAt: row?.updated_at ?? lease.created_at,
     }
   })
 
@@ -194,4 +211,11 @@ export const fetchPortfolioIntelligence = async (
     expirationLabels: quarterlyFunnel.map((bucket) => bucket.label),
     riskCounts,
   }
+}
+
+const riskFromExpiry = (end: Date, now: Date): number => {
+  const days = daysUntil(end, now)
+  if (days <= 90) return 0.85
+  if (days <= 365) return 0.5
+  return 0.15
 }

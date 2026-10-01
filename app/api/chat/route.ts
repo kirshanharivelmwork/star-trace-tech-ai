@@ -4,47 +4,90 @@ import {
   createUIMessageStreamResponse,
   streamText,
   toUIMessageStream,
-  type DeepPartial,
   type UIMessage,
 } from "ai"
 
-import type { LeaseAbstract } from "@/app/api/lease/schema"
+import { getOrgContext } from "@/lib/org/context"
+import { createClient } from "@/lib/supabase/server"
 
-// Route Handlers stream indefinitely, so allow the function to run long
-// enough for the model to finish generating.
 export const maxDuration = 30
 
-// NOTE: the literal model id "claude-3-5-sonnet-20241022" ("Claude 3.5
-// Sonnet") is a retired Anthropic snapshot — the Anthropic API rejects
-// calls to it outright (see app/api/lease/route.ts, which hit the same
-// issue). "claude-sonnet-4-6" is the currently-live model already used
-// there; reusing that constant here instead of the literally-requested
-// 3.5 id so this route actually works.
 const MODEL_ID = "claude-sonnet-4-6"
 
 const GENERAL_SYSTEM_PROMPT =
   "You are the AI assistant embedded in this dashboard. Keep answers concise, accurate, and well formatted."
 
-// Deliberately loose/defensive rather than `LeaseAbstract` — this is
-// user-controlled JSON from the request body, and (per
-// lib/lease/portfolio-metrics.ts) real abstract_data can be partial or
-// contain unfilled template placeholders. Never trust its shape blindly.
-type LeaseContext = DeepPartial<LeaseAbstract> | Record<string, unknown>
+const MAX_BODY_BYTES = 256 * 1024
+const MAX_MESSAGES = 40
 
-const buildLeaseSystemPrompt = (leaseContext: LeaseContext) =>
+const buildLeaseSystemPrompt = (leaseContext: unknown) =>
   `You are an expert commercial real estate attorney. Answer the user's questions strictly using the provided lease context. If the answer is not in the context, state that clearly. Here is the lease data: ${JSON.stringify(leaseContext)}`
 
 export async function POST(req: Request) {
+  const supabase = await createClient()
   const {
-    messages,
-    leaseContext,
-  }: { messages: UIMessage[]; leaseContext?: LeaseContext } = await req.json()
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
 
-  // Same endpoint serves two callers: the general dashboard assistant
-  // (components/dashboard/chat-panel.tsx, no leaseContext -> general
-  // prompt, unchanged behavior) and the lease-scoped RAG chat
-  // (components/dashboard/lease-chat.tsx, sends leaseContext -> strict
-  // lease-only prompt).
+  if (authError || !user) {
+    return new Response("Unauthorized. Please sign in to use chat.", {
+      status: 401,
+    })
+  }
+
+  const contentLength = Number(req.headers.get("content-length") ?? "0")
+  if (contentLength > MAX_BODY_BYTES) {
+    return new Response("Payload too large.", { status: 413 })
+  }
+
+  let body: {
+    messages?: UIMessage[]
+    leaseContext?: unknown
+    leaseAbstractId?: string
+  }
+
+  try {
+    body = await req.json()
+  } catch {
+    return new Response("Invalid JSON body.", { status: 400 })
+  }
+
+  const messages = body.messages ?? []
+  if (messages.length > MAX_MESSAGES) {
+    return new Response("Too many messages in this request.", { status: 413 })
+  }
+
+  const org = await getOrgContext()
+  if (!org) {
+    return new Response("Workspace is not ready.", { status: 403 })
+  }
+
+  let leaseContext: unknown = undefined
+
+  if (body.leaseAbstractId) {
+    const { data, error } = await supabase
+      .from("lease_abstracts")
+      .select("id, organization_id, abstract_data")
+      .eq("id", body.leaseAbstractId)
+      .eq("organization_id", org.orgId)
+      .maybeSingle()
+
+    if (error || !data) {
+      return new Response("You do not have access to that lease.", {
+        status: 403,
+      })
+    }
+
+    leaseContext = data.abstract_data
+  } else if (body.leaseContext) {
+    const serialized = JSON.stringify(body.leaseContext)
+    if (serialized.length > 80_000) {
+      return new Response("Lease context is too large.", { status: 413 })
+    }
+    leaseContext = body.leaseContext
+  }
+
   const system = leaseContext
     ? buildLeaseSystemPrompt(leaseContext)
     : GENERAL_SYSTEM_PROMPT

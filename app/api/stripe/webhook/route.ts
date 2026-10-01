@@ -60,6 +60,10 @@ export async function POST(request: Request) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session
         const userId = session.client_reference_id
+        const orgId =
+          session.metadata?.orgId ??
+          session.metadata?.organizationId ??
+          null
 
         if (!userId) {
           console.warn(
@@ -87,6 +91,7 @@ export async function POST(request: Request) {
 
         const { error } = await supabaseAdmin.from("subscriptions").upsert({
           user_id: userId,
+          organization_id: orgId,
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           status,
@@ -111,6 +116,7 @@ export async function POST(request: Request) {
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription
         const userId = subscription.metadata?.userId ?? null
+        const orgId = subscription.metadata?.orgId ?? null
         const customerId = getCustomerId(subscription.customer)
 
         const status =
@@ -124,29 +130,29 @@ export async function POST(request: Request) {
           price_id: getPriceId(subscription),
           current_period_end: getCurrentPeriodEnd(subscription),
           updated_at: new Date().toISOString(),
+          ...(orgId ? { organization_id: orgId } : {}),
         }
 
-        // Prefer matching on user_id (set via subscription_data.metadata
-        // at checkout time); fall back to stripe_customer_id for
-        // subscriptions that predate that metadata, or events that arrive
-        // out of order relative to checkout.session.completed.
-        // `{ count: "exact" }` is required for `.update()` to report back
-        // how many rows it actually matched.
-        const query = userId
+        const query = orgId
           ? supabaseAdmin
               .from("subscriptions")
               .update(updatePayload, { count: "exact" })
-              .eq("user_id", userId)
-          : customerId
+              .eq("organization_id", orgId)
+          : userId
             ? supabaseAdmin
                 .from("subscriptions")
                 .update(updatePayload, { count: "exact" })
-                .eq("stripe_customer_id", customerId)
-            : null
+                .eq("user_id", userId)
+            : customerId
+              ? supabaseAdmin
+                  .from("subscriptions")
+                  .update(updatePayload, { count: "exact" })
+                  .eq("stripe_customer_id", customerId)
+              : null
 
         if (!query) {
           console.warn(
-            `[Stripe Webhook] ${event.type} for subscription ${subscription.id} has no user_id metadata or customer id — cannot attribute to a user.`
+            `[Stripe Webhook] ${event.type} for subscription ${subscription.id} has no org_id, user_id metadata or customer id — cannot attribute.`
           )
           break
         }
@@ -159,7 +165,7 @@ export async function POST(request: Request) {
           )
         } else if (!count) {
           console.warn(
-            `[Stripe Webhook] ${event.type} for subscription ${subscription.id} matched no existing row (userId=${userId}, customerId=${customerId}).`
+            `[Stripe Webhook] ${event.type} for subscription ${subscription.id} matched no existing row (orgId=${orgId}, userId=${userId}, customerId=${customerId}).`
           )
         }
 

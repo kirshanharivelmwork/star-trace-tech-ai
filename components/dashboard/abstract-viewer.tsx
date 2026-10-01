@@ -22,19 +22,26 @@ type AbstractViewerProps = {
   fileName: string | null
   isLoading: boolean
   errorMessage?: string | null
+  leaseAbstractId?: string | null
 }
 
-const FIELD_LABELS: Record<keyof LeaseAbstract, string> = {
+const FIELD_LABELS: Record<string, string> = {
   landlordName: "Landlord",
   tenantName: "Tenant",
   premisesAddress: "Premises address",
+  propertyName: "Property name",
   contractualTerm: "Contractual term",
   commencementDate: "Commencement date",
   expirationDate: "Expiration date",
   initialBaseRent: "Initial base rent",
+  premisesSquareFootage: "Square footage",
+  monthlyBaseRentAmount: "Monthly base rent",
+  rentPaymentFrequency: "Rent payment frequency",
   rentReviewDetails: "Rent review details",
   camServiceChargeTerms: "CAM / service charge terms",
   terminationAndBreakClauses: "Termination & break clauses",
+  noticeDeadlines: "Notice deadlines",
+  discountRateAnnual: "Discount / IBR",
   keyObligationsAndRestrictions: "Key obligations & restrictions",
 }
 
@@ -55,12 +62,18 @@ const toCsv = (abstract: DeepPartial<LeaseAbstract>) => {
 
   const rows = (Object.keys(FIELD_LABELS) as Array<keyof LeaseAbstract>).map(
     (key) => {
-      const value = abstract[key]
+      const value = abstract[key as keyof LeaseAbstract]
       const cell = Array.isArray(value)
-        ? value.filter((item): item is string => Boolean(item)).join("; ")
-        : (value ?? "")
+        ? value
+            .map((item) =>
+              typeof item === "string" ? item : JSON.stringify(item)
+            )
+            .join("; ")
+        : value == null
+          ? ""
+          : String(value)
 
-      return `${escapeCell(FIELD_LABELS[key])},${escapeCell(String(cell))}`
+      return `${escapeCell(FIELD_LABELS[key] ?? key)},${escapeCell(String(cell))}`
     }
   )
 
@@ -125,6 +138,7 @@ export const AbstractViewer = ({
   fileName,
   isLoading,
   errorMessage,
+  leaseAbstractId,
 }: AbstractViewerProps) => {
   const [copied, setCopied] = useState(false)
 
@@ -180,7 +194,11 @@ export const AbstractViewer = ({
               <SheetTitle className="sr-only">
                 Ask AI about {fileName ?? "this lease"}
               </SheetTitle>
-              <LeaseChat abstractData={abstract} fileName={fileName} />
+              <LeaseChat
+                abstractData={abstract}
+                fileName={fileName}
+                leaseAbstractId={leaseAbstractId}
+              />
             </SheetContent>
           </Sheet>
 
@@ -253,6 +271,24 @@ export const AbstractViewer = ({
             <StringField
               label={FIELD_LABELS.initialBaseRent}
               value={abstract?.initialBaseRent}
+              isLoading={isLoading}
+            />
+            <StringField
+              label={FIELD_LABELS.monthlyBaseRentAmount}
+              value={
+                abstract?.monthlyBaseRentAmount != null
+                  ? String(abstract.monthlyBaseRentAmount)
+                  : undefined
+              }
+              isLoading={isLoading}
+            />
+            <StringField
+              label={FIELD_LABELS.premisesSquareFootage}
+              value={
+                abstract?.premisesSquareFootage != null
+                  ? String(abstract.premisesSquareFootage)
+                  : undefined
+              }
               isLoading={isLoading}
             />
             <StringField

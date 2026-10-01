@@ -1,5 +1,20 @@
 import { z } from "zod"
 
+export const noticeDeadlineSchema = z.object({
+  label: z
+    .string()
+    .describe("Short name for this deadline, e.g. \"Break option\" or \"Renewal notice\"."),
+  targetDate: z
+    .string()
+    .describe(
+      "The deadline date as ISO YYYY-MM-DD when parseable; otherwise the date as written. Use a placeholder phrase if unparseable."
+    ),
+  noticeDays: z
+    .number()
+    .nullable()
+    .describe("Required notice period in days, or null if not stated."),
+})
+
 // Shared between the server route (app/api/lease/route.ts) and every client
 // component that renders or exports a lease abstract, per the AI SDK's
 // recommendation to define structured-output schemas in one file that's
@@ -14,6 +29,11 @@ export const leaseAbstractSchema = z.object({
   premisesAddress: z
     .string()
     .describe("Full postal address of the leased premises."),
+  propertyName: z
+    .string()
+    .describe(
+      "Building or property name if stated; otherwise a short label derived from the premises address."
+    ),
   contractualTerm: z
     .string()
     .describe("The length of the lease term, e.g. \"10 years\"."),
@@ -27,6 +47,23 @@ export const leaseAbstractSchema = z.object({
     .string()
     .describe(
       "The initial base rent amount and payment frequency, e.g. \"$120,000/year, paid monthly in advance\"."
+    ),
+  premisesSquareFootage: z
+    .number()
+    .nullable()
+    .describe(
+      "Rentable / lettable square footage as a number, or null if not stated. Ignore placeholders such as [●] or TBD."
+    ),
+  monthlyBaseRentAmount: z
+    .number()
+    .nullable()
+    .describe(
+      "Initial base rent converted to a monthly amount in the document's currency. If rent is stated annually, divide by 12. Null if not stated."
+    ),
+  rentPaymentFrequency: z
+    .string()
+    .describe(
+      "How often rent is paid as written (monthly, quarterly, annually). Use \"Not specified in the document\" if absent."
     ),
   rentReviewDetails: z
     .string()
@@ -43,6 +80,17 @@ export const leaseAbstractSchema = z.object({
     .describe(
       "Each termination or break option as a separate string, including notice requirements and conditions."
     ),
+  noticeDeadlines: z
+    .array(noticeDeadlineSchema)
+    .describe(
+      "Parseable notice, break, and renewal deadlines. Omit entries whose dates cannot be parsed."
+    ),
+  discountRateAnnual: z
+    .number()
+    .nullable()
+    .describe(
+      "Stated discount / incremental borrowing rate as an annual decimal (e.g. 0.05 for 5%), or null if not in the document."
+    ),
   keyObligationsAndRestrictions: z
     .array(z.string())
     .describe(
@@ -51,6 +99,7 @@ export const leaseAbstractSchema = z.object({
 })
 
 export type LeaseAbstract = z.infer<typeof leaseAbstractSchema>
+export type NoticeDeadline = z.infer<typeof noticeDeadlineSchema>
 
 /** JSON body shape sent from the client to POST /api/lease. */
 export type LeaseAnalysisInput = {
@@ -63,8 +112,11 @@ export type LeaseAnalysisInput = {
 export type LeaseAbstractRecord = {
   id: string
   user_id: string
+  organization_id?: string | null
+  lease_id?: string | null
   file_name: string
   storage_path: string
   abstract_data: LeaseAbstract
+  needs_review?: boolean | null
   created_at: string
 }

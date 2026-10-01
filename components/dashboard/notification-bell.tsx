@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { AlertTriangle, Bell, CalendarClock } from "lucide-react"
 
+import { useOrg } from "@/components/providers/org-provider"
 import { useUser } from "@/components/providers/user-provider"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,13 +29,14 @@ const ALERT_WINDOW_DAYS = 90
  */
 export const NotificationBell = () => {
   const { user, isLoading: isUserLoading } = useUser()
+  const org = useOrg()
   const [alerts, setAlerts] = useState<LeaseAlert[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (isUserLoading) return
 
-    if (!user) {
+    if (!user || !org?.orgId) {
       setAlerts([])
       setIsLoading(false)
       return
@@ -49,7 +51,7 @@ export const NotificationBell = () => {
       const { data, error } = await supabase
         .from("lease_abstracts")
         .select("id, file_name, abstract_data")
-        .eq("user_id", user.id)
+        .eq("organization_id", org.orgId)
 
       if (isCancelled) return
 
@@ -73,7 +75,7 @@ export const NotificationBell = () => {
     return () => {
       isCancelled = true
     }
-  }, [user, isUserLoading])
+  }, [user, isUserLoading, org?.orgId])
 
   if (!user) return null
 
