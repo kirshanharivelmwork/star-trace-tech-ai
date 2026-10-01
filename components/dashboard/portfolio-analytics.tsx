@@ -1,5 +1,5 @@
+import type { ReactNode } from "react"
 import { AlertCircle, Building2, Clock, FileWarning } from "lucide-react"
-import type { LucideIcon } from "lucide-react"
 
 import { MetricTile } from "@/components/dashboard/metric-tile"
 import { SpatialCardStack } from "@/components/dashboard/spatial-card-stack"
@@ -29,7 +29,7 @@ type MetricCard = {
   label: string
   value: string
   change: string
-  icon: LucideIcon
+  icon: ReactNode
 }
 
 /**
@@ -104,13 +104,13 @@ export const PortfolioAnalytics = async () => {
         metrics.totalLeases === 0
           ? "No leases analyzed yet"
           : "Across your portfolio",
-      icon: Building2,
+      icon: <Building2 className="h-4 w-4" />,
     },
     {
       label: "Upcoming Expirations",
       value: String(metrics.upcomingExpirations),
       change: "Within the next 24 months",
-      icon: AlertCircle,
+      icon: <AlertCircle className="h-4 w-4" />,
     },
     {
       label: "Portfolio WALT",
@@ -120,13 +120,13 @@ export const PortfolioAnalytics = async () => {
         metrics.waltYears != null
           ? "Weighted average lease term"
           : "No parseable lease terms yet",
-      icon: Clock,
+      icon: <Clock className="h-4 w-4" />,
     },
     {
       label: "Needs Review",
       value: String(metrics.needsReviewCount),
       change: "Missing or placeholder term/dates",
-      icon: FileWarning,
+      icon: <FileWarning className="h-4 w-4" />,
     },
   ]
 

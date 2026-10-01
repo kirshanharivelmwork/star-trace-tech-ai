@@ -1,8 +1,7 @@
 "use client"
 
 import { useCallback, useRef, useState } from "react"
-import type { CSSProperties, MouseEvent } from "react"
-import type { LucideIcon } from "lucide-react"
+import type { CSSProperties, MouseEvent, ReactNode } from "react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -10,7 +9,7 @@ type MetricTileProps = {
   label: string
   value: string
   hint: string
-  icon: LucideIcon
+  icon: ReactNode
 }
 
 const RESTING_TILT =
@@ -20,12 +19,7 @@ const RESTING_TILT =
  * 3D-tilt metric tile. Pointer tracking stays in this leaf client
  * component so pages can remain Server Components.
  */
-export const MetricTile = ({
-  label,
-  value,
-  hint,
-  icon: Icon,
-}: MetricTileProps) => {
+export const MetricTile = ({ label, value, hint, icon }: MetricTileProps) => {
   const ref = useRef<HTMLDivElement>(null)
   const [tilt, setTilt] = useState<CSSProperties>({ transform: RESTING_TILT })
 
@@ -61,9 +55,7 @@ export const MetricTile = ({
           <CardTitle className="text-xs font-medium tracking-[0.18em] text-zinc-500 uppercase">
             {label}
           </CardTitle>
-          <span className="icon-well size-8">
-            <Icon className="size-3.5" />
-          </span>
+          <span className="icon-well size-8">{icon}</span>
         </CardHeader>
         <CardContent>
           <div className="metric-value text-3xl text-zinc-50">{value}</div>

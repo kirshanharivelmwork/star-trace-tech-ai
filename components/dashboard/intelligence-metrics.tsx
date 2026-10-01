@@ -1,10 +1,10 @@
+import type { ReactNode } from "react"
 import {
   Activity,
   Building2,
   Clock,
   LandPlot,
 } from "lucide-react"
-import type { LucideIcon } from "lucide-react"
 
 import { MetricTile } from "@/components/dashboard/metric-tile"
 import type { IntelligenceSnapshot } from "@/lib/telemetry/types"
@@ -33,7 +33,7 @@ type Metric = {
   label: string
   value: string
   hint: string
-  icon: LucideIcon
+  icon: ReactNode
 }
 
 type IntelligenceMetricsProps = {
@@ -46,25 +46,25 @@ export const IntelligenceMetrics = ({ snapshot }: IntelligenceMetricsProps) => {
       label: "Portfolio valuation",
       value: formatUsd(snapshot.valuation),
       hint: `${snapshot.propertyCount} ${snapshot.propertyCount === 1 ? "asset" : "assets"}`,
-      icon: Building2,
+      icon: <Building2 className="h-4 w-4" />,
     },
     {
       label: "Net rentable area",
       value: formatArea(snapshot.nra),
       hint: "Across owned properties",
-      icon: LandPlot,
+      icon: <LandPlot className="h-4 w-4" />,
     },
     {
       label: "Portfolio WALT",
       value: formatWalt(snapshot.waltYears),
       hint: "SF-weighted remaining term",
-      icon: Clock,
+      icon: <Clock className="h-4 w-4" />,
     },
     {
       label: "Active leases",
       value: String(snapshot.activeLeaseCount),
       hint: "In-place as of today",
-      icon: Activity,
+      icon: <Activity className="h-4 w-4" />,
     },
   ]
 
