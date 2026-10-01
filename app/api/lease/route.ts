@@ -1,4 +1,5 @@
 import { anthropic } from "@ai-sdk/anthropic"
+import { revalidatePath } from "next/cache"
 import { streamObject } from "ai"
 
 import { hydrateCanonicalLease } from "@/lib/lease/hydrate"
@@ -144,6 +145,11 @@ export async function POST(req: Request) {
             fileName,
             abstract: object as PortfolioLeaseAbstract,
           })
+
+          // Audit log is written inside hydrateCanonicalLease. Invalidate
+          // the dashboard so Overview / CAM / ASC 842 Server Components
+          // pick up the new property + lease without a hard reload.
+          revalidatePath("/app", "layout")
         } catch (persistError) {
           console.error(
             "[Lease API Error] failed to persist abstract:",
