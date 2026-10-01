@@ -149,7 +149,7 @@ export const AnalyticsBoard = ({
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800/80">
                 <div
-                  className="h-1.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-400 shadow-[0_0_12px_-2px_var(--glow-accent)]"
+                  className="h-1.5 rounded-full bg-gradient-to-r from-pink-300 to-fuchsia-300 shadow-[0_0_12px_-2px_var(--glow-primary)]"
                   style={{
                     width: `${(bucket.count / maxTimelineCount) * 100}%`,
                   }}

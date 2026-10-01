@@ -21,7 +21,7 @@ export const FinanceTabs = ({ active }: { active: FinanceTab }) => {
             className={cn(
               "rounded-xl px-3 py-1.5 text-xs font-medium tracking-wide transition-all",
               isActive
-                ? "bg-zinc-100 text-zinc-950 shadow-[0_0_18px_-6px_var(--glow-primary)]"
+                ? "bg-pink-200 text-zinc-950 shadow-[0_0_18px_-6px_var(--glow-primary)]"
                 : "text-zinc-400 hover:text-zinc-100"
             )}
           >

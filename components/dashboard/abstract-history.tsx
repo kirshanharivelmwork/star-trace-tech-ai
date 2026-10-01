@@ -130,7 +130,7 @@ export const AbstractHistory = ({
                     onClick={() => onSelect(record)}
                     className={
                       isSelected
-                        ? "h-auto w-full flex-col items-start gap-1 whitespace-normal rounded-2xl border-violet-400/40 px-3 py-2 text-left shadow-[0_0_20px_-10px_var(--glow-primary)]"
+                        ? "h-auto w-full flex-col items-start gap-1 whitespace-normal rounded-2xl border-pink-300/40 px-3 py-2 text-left shadow-[0_0_20px_-10px_var(--glow-primary)]"
                         : "h-auto w-full flex-col items-start gap-1 whitespace-normal rounded-2xl px-3 py-2 text-left"
                     }
                   >

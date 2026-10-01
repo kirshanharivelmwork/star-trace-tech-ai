@@ -112,7 +112,7 @@ export const CamBoard = ({ snapshot }: CamBoardProps) => {
                 </thead>
                 <tbody className="divide-y divide-zinc-800/80">
                   {snapshot.expenses.map((row) => (
-                    <tr key={row.id} className="transition-colors hover:bg-violet-500/5">
+                    <tr key={row.id} className="transition-colors hover:bg-pink-400/5">
                       <td className="px-4 py-3 whitespace-nowrap text-zinc-200">
                         {formatDate(row.incurredDate)}
                       </td>
@@ -159,7 +159,7 @@ export const CamBoard = ({ snapshot }: CamBoardProps) => {
                 </thead>
                 <tbody className="divide-y divide-zinc-800/80">
                   {snapshot.allocations.map((row) => (
-                    <tr key={row.id} className="transition-colors hover:bg-violet-500/5">
+                    <tr key={row.id} className="transition-colors hover:bg-pink-400/5">
                       <td className="px-4 py-3 font-medium tracking-tight text-zinc-50">
                         {row.tenantName}
                       </td>

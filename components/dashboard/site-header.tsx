@@ -11,11 +11,11 @@ type SiteHeaderProps = {
 
 export const SiteHeader = ({ title, description }: SiteHeaderProps) => {
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-zinc-800/80 px-4 backdrop-blur-xl md:px-6">
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-zinc-800/60 px-4 backdrop-blur-2xl md:px-6">
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-5 bg-zinc-800" />
       <div className="flex min-w-0 flex-1 flex-col justify-center leading-tight">
-        <h1 className="truncate font-heading text-lg font-medium tracking-tight text-zinc-50">
+        <h1 className="truncate font-heading text-lg font-semibold tracking-tight text-zinc-50">
           {title}
         </h1>
         {description ? (

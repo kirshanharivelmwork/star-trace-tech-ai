@@ -24,7 +24,7 @@ import { createClient } from "@/lib/supabase/server"
 const panelEmpty = (message: string) => (
   <Card>
     <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-sm text-zinc-400">
-      <Radar className="size-5 text-violet-300" />
+      <Radar className="size-5 text-pink-300" />
       <p>{message}</p>
     </CardContent>
   </Card>

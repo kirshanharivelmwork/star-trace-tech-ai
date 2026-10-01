@@ -39,7 +39,7 @@ const formatDate = (date: Date | null) =>
 const EmptyState = ({ message }: { message: string }) => (
   <Card>
     <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-sm text-muted-foreground">
-      <Users className="size-5 text-violet-300" />
+      <Users className="size-5 text-pink-300" />
       <p>{message}</p>
     </CardContent>
   </Card>
@@ -101,7 +101,7 @@ const CustomersContent = async () => {
               {tenants.map((tenant) => (
                 <tr
                   key={tenant.tenantName}
-                  className="transition-colors hover:bg-violet-500/5"
+                  className="transition-colors hover:bg-pink-400/5"
                 >
                   <td className="px-4 py-3 font-medium tracking-tight text-zinc-50">
                     {tenant.tenantName}

@@ -1,6 +1,8 @@
 import { AlertCircle, Building2, Clock, FileWarning } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
+import { MetricTile } from "@/components/dashboard/metric-tile"
+import { SpatialCardStack } from "@/components/dashboard/spatial-card-stack"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/server"
 import {
@@ -44,12 +46,38 @@ export const PortfolioAnalytics = async () => {
 
   if (!user) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
-          <Building2 className="size-5" />
-          <p>Sign in to see your portfolio analytics.</p>
-        </CardContent>
-      </Card>
+      <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,22rem)_1fr]">
+        <SpatialCardStack
+          cards={[
+            {
+              eyebrow: "StarFlow · Portfolio",
+              title: "Active leases",
+              value: "—",
+              tone: "pink",
+            },
+            {
+              eyebrow: "Weighted term",
+              title: "Portfolio WALT",
+              value: "—",
+              tone: "mint",
+            },
+            {
+              eyebrow: "Watchlist",
+              title: "Needs review",
+              value: "—",
+              tone: "blue",
+            },
+          ]}
+        />
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
+            <span className="icon-well size-10">
+              <Building2 className="size-4" />
+            </span>
+            <p>Sign in to see your portfolio analytics.</p>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
@@ -104,23 +132,43 @@ export const PortfolioAnalytics = async () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map((card) => (
-          <Card key={card.label}>
-            <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-medium tracking-widest text-zinc-500 uppercase">
-                {card.label}
-              </CardTitle>
-              <card.icon className="size-4 text-violet-300" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-semibold tracking-tight text-zinc-50">
-                {card.value}
-              </div>
-              <p className="mt-1 text-xs text-zinc-500">{card.change}</p>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,22rem)_1fr]">
+        <SpatialCardStack
+          cards={[
+            {
+              eyebrow: "StarFlow · Portfolio",
+              title: "Active leases",
+              value: String(metrics.totalLeases),
+              tone: "pink",
+            },
+            {
+              eyebrow: "Weighted term",
+              title: "Portfolio WALT",
+              value:
+                metrics.waltYears != null
+                  ? `${metrics.waltYears.toFixed(1)} yrs`
+                  : "N/A",
+              tone: "mint",
+            },
+            {
+              eyebrow: "Watchlist",
+              title: "Needs review",
+              value: String(metrics.needsReviewCount),
+              tone: "blue",
+            },
+          ]}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          {cards.map((card) => (
+            <MetricTile
+              key={card.label}
+              label={card.label}
+              value={card.value}
+              hint={card.change}
+              icon={card.icon}
+            />
+          ))}
+        </div>
       </div>
 
       <Card>
@@ -149,7 +197,7 @@ export const PortfolioAnalytics = async () => {
                   {metrics.criticalDates.map((entry) => (
                     <tr
                       key={entry.id}
-                      className="transition-colors hover:bg-violet-500/5"
+                      className="transition-colors hover:bg-pink-400/5"
                     >
                       <td className="px-4 py-3">
                         <div className="font-medium tracking-tight text-zinc-50">

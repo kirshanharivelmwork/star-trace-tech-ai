@@ -5,8 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: var(--font-sans);
+    --font-heading: var(--font-outfit);
+    --font-sans: var(--font-plus-jakarta);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -71,7 +71,7 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 1rem;
+    --radius: 1.15rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -83,53 +83,46 @@
 }
 
 /*
- * Obsidian fintech theme: deep zinc-950/near-black surfaces with a
- * violet/magenta accent (used for --primary, --ring, focus states, active
- * nav items, and chart series 1–2). Deliberately keeps semantic status
- * colors (destructive/red, and the amber/emerald/zinc risk-breakdown
- * colors used in app/analytics/page.tsx and components/dashboard/
- * portfolio-analytics.tsx) untouched — those carry meaning (critical /
- * healthy / needs-review) that shouldn't be recolored to match the brand
- * accent.
+ * Spatial banking theme — charcoal surfaces, soft lavender-pink, mint,
+ * and sky pastels. Matches the isometric 3D fintech reference (stacked
+ * plastic cards, pill filters, glowing line charts) rather than neon
+ * cyberpunk violet.
  */
 .dark {
-    --background: oklch(0.12 0.006 285.8); /* matte obsidian, slightly below zinc-950 */
+    --background: oklch(0.145 0.004 286);
     --foreground: oklch(0.99 0 0);
-    --card: oklch(0.205 0.008 286);
+    --card: oklch(0.18 0.006 286);
     --card-foreground: oklch(0.99 0 0);
-    --popover: oklch(0.18 0.008 286);
+    --popover: oklch(0.17 0.006 286);
     --popover-foreground: oklch(0.99 0 0);
-    --primary: oklch(0.62 0.26 293);
-    --primary-foreground: oklch(0.99 0 0);
-    --secondary: oklch(0.26 0.01 286);
+    --primary: oklch(0.84 0.09 330);
+    --primary-foreground: oklch(0.22 0.03 330);
+    --secondary: oklch(0.24 0.01 286);
     --secondary-foreground: oklch(0.99 0 0);
-    --muted: oklch(0.2 0.008 286);
-    --muted-foreground: oklch(0.68 0.02 286); /* zinc-400/500 */
-    --accent: oklch(0.26 0.02 300);
+    --muted: oklch(0.22 0.008 286);
+    --muted-foreground: oklch(0.72 0.02 286);
+    --accent: oklch(0.26 0.03 330);
     --accent-foreground: oklch(0.99 0 0);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(0.72 0.02 286 / 22%);
-    --input: oklch(1 0 0 / 10%);
-    --ring: oklch(0.62 0.26 293);
-    --chart-1: oklch(0.62 0.26 293);
-    --chart-2: oklch(0.7 0.28 322);
-    --chart-3: oklch(0.72 0.02 286);
-    --chart-4: oklch(0.55 0.02 286);
-    --chart-5: oklch(0.26 0.01 286);
-    --sidebar: oklch(0.145 0.01 286 / 70%);
+    --border: oklch(0.78 0.02 286 / 18%);
+    --input: oklch(1 0 0 / 8%);
+    --ring: oklch(0.84 0.09 330);
+    --chart-1: oklch(0.78 0.16 330);
+    --chart-2: oklch(0.82 0.1 175);
+    --chart-3: oklch(0.78 0.08 240);
+    --chart-4: oklch(0.62 0.02 286);
+    --chart-5: oklch(0.28 0.01 286);
+    --sidebar: oklch(0.13 0.006 286 / 72%);
     --sidebar-foreground: oklch(0.99 0 0);
-    --sidebar-primary: oklch(0.62 0.26 293);
-    --sidebar-primary-foreground: oklch(0.99 0 0);
-    --sidebar-accent: oklch(0.28 0.04 300 / 55%);
+    --sidebar-primary: oklch(0.84 0.09 330);
+    --sidebar-primary-foreground: oklch(0.22 0.03 330);
+    --sidebar-accent: oklch(0.28 0.04 330 / 50%);
     --sidebar-accent-foreground: oklch(0.99 0 0);
-    --sidebar-border: oklch(0.72 0.02 286 / 18%);
-    --sidebar-ring: oklch(0.62 0.26 293);
+    --sidebar-border: oklch(0.78 0.02 286 / 16%);
+    --sidebar-ring: oklch(0.84 0.09 330);
 
-    /* Soft, low-opacity glow colors for box-shadow "illumination" effects
-       (buttons, active nav items, badges) — kept separate from --primary/
-       --chart-2 so glow opacity can be tuned without affecting solid fills. */
-    --glow-primary: oklch(0.606 0.25 292.717 / 45%);
-    --glow-accent: oklch(0.667 0.295 322.15 / 40%);
+    --glow-primary: oklch(0.84 0.12 330 / 42%);
+    --glow-accent: oklch(0.82 0.1 175 / 36%);
 }
 
 @layer base {
@@ -138,31 +131,190 @@
     }
   body {
     @apply bg-background text-foreground antialiased;
+    font-feature-settings: "ss01" on, "cv11" on;
     }
   html {
     @apply font-sans;
     }
   h1, h2, h3, [data-slot="card-title"] {
-    letter-spacing: -0.03em;
+    font-family: var(--font-outfit), var(--font-plus-jakarta), sans-serif;
+    letter-spacing: -0.04em;
   }
 }
 
 @layer utilities {
   .glass-panel {
-    @apply border border-zinc-800/80 bg-zinc-900/60 shadow-2xl shadow-black/40 backdrop-blur-xl;
+    background:
+      linear-gradient(180deg, oklch(1 0 0 / 7%) 0%, oklch(1 0 0 / 2%) 18%, transparent 46%),
+      oklch(0.18 0.006 286 / 62%);
+    border: 1px solid oklch(0.78 0.02 286 / 20%);
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 14%),
+      inset 0 -1px 0 0 oklch(0 0 0 / 35%),
+      0 18px 40px -18px oklch(0 0 0 / 72%),
+      0 0 40px -18px var(--glow-primary);
+    backdrop-filter: blur(28px) saturate(140%);
+  }
+
+  .metric-value {
+    font-family: var(--font-outfit), var(--font-plus-jakarta), sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.05em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .icon-well {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: oklch(0.84 0.09 330 / 18%);
+    color: oklch(0.9 0.08 330);
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 18%),
+      0 0 24px -6px var(--glow-primary);
   }
 }
 
-/* Subtle violet/magenta glow washes behind the obsidian dark theme, fixed
-   to the viewport so they read as ambient lighting behind the glass
-   panels rather than scrolling with the page content. Scoped to `.dark`
-   only — light mode (reachable via the "d" hotkey) is intentionally left
-   untouched. */
 .dark body {
-  background-color: oklch(0.12 0.006 285.8);
+  background-color: oklch(0.145 0.004 286);
   background-image:
-    radial-gradient(ellipse 80% 50% at 8% -10%, oklch(0.62 0.26 293 / 22%), transparent 50%),
-    radial-gradient(ellipse 60% 40% at 100% 0%, oklch(0.7 0.28 322 / 16%), transparent 46%),
-    radial-gradient(ellipse 50% 40% at 50% 110%, oklch(0.5 0.2 293 / 12%), transparent 50%);
+    radial-gradient(ellipse 70% 46% at 8% -8%, oklch(0.84 0.1 330 / 18%), transparent 52%),
+    radial-gradient(ellipse 50% 36% at 96% 8%, oklch(0.82 0.1 175 / 12%), transparent 48%),
+    radial-gradient(ellipse 40% 32% at 70% 100%, oklch(0.78 0.08 240 / 10%), transparent 50%);
   background-attachment: fixed;
+}
+
+.dark body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+[data-slot="card"] {
+  transform: translateZ(0);
+  transform-style: preserve-3d;
+  background:
+    linear-gradient(165deg, oklch(1 0 0 / 8%) 0%, oklch(1 0 0 / 1.5%) 22%, transparent 48%),
+    oklch(0.18 0.006 286 / 64%);
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 12%),
+    inset 0 -1px 0 0 oklch(0 0 0 / 38%),
+    0 2px 0 0 oklch(1 0 0 / 4%),
+    0 22px 48px -20px oklch(0 0 0 / 78%);
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 420ms ease;
+}
+
+[data-slot="card"]:hover {
+  transform: translateY(-5px) rotateX(2.4deg);
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 16%),
+    inset 0 -1px 0 0 oklch(0 0 0 / 38%),
+    0 2px 0 0 oklch(1 0 0 / 6%),
+    0 28px 56px -18px oklch(0 0 0 / 82%),
+    0 0 48px -18px var(--glow-primary);
+}
+
+.metric-tilt [data-slot="card"]:hover {
+  transform: none;
+}
+
+.spatial-scene {
+  perspective: 1400px;
+  perspective-origin: 50% 28%;
+}
+
+.spatial-stack {
+  position: relative;
+  height: 15rem;
+  transform-style: preserve-3d;
+  transform: rotateX(12deg) rotateY(-28deg) rotateZ(7deg);
+  animation: spatial-float 9s ease-in-out infinite;
+}
+
+.spatial-card {
+  position: absolute;
+  left: 14%;
+  right: 10%;
+  top: 8%;
+  display: flex;
+  height: 8.25rem;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.65rem;
+  padding: 1.1rem 1.2rem;
+  transform-style: preserve-3d;
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 45%),
+    0 18px 32px -12px oklch(0 0 0 / 55%);
+  backface-visibility: hidden;
+}
+
+.spatial-card[data-layer="0"] {
+  transform: translate3d(0, 0, 120px);
+  z-index: 3;
+}
+
+.spatial-card[data-layer="1"] {
+  transform: translate3d(-32px, 20px, 52px) scale(0.97);
+  z-index: 2;
+}
+
+.spatial-card[data-layer="2"] {
+  transform: translate3d(-62px, 40px, 0) scale(0.94);
+  z-index: 1;
+}
+
+.spatial-card-pink {
+  background: linear-gradient(145deg, #f7dcff 0%, #e8b8f8 48%, #d9a6ee 100%);
+  color: #2a2430;
+}
+
+.spatial-card-mint {
+  background: linear-gradient(145deg, #c8f5e4 0%, #8edcc4 50%, #6ec9c0 100%);
+  color: #17332c;
+}
+
+.spatial-card-blue {
+  background: linear-gradient(145deg, #c9def8 0%, #8ebbe8 52%, #6aa3d8 100%);
+  color: #f8fbff;
+}
+
+.ambient-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(1px);
+  pointer-events: none;
+  animation: orb-drift 11s ease-in-out infinite;
+}
+
+@keyframes spatial-float {
+  0%, 100% {
+    transform: rotateX(12deg) rotateY(-28deg) rotateZ(7deg) translateY(0);
+  }
+  50% {
+    transform: rotateX(14deg) rotateY(-24deg) rotateZ(5deg) translateY(-8px);
+  }
+}
+
+@keyframes orb-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(10px, -14px, 0) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spatial-stack,
+  .ambient-orb,
+  [data-slot="card"] {
+    animation: none;
+    transition: none;
+  }
+
+  [data-slot="card"]:hover {
+    transform: none;
+  }
 }

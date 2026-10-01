@@ -31,7 +31,7 @@ export const TelemetryPanel = ({
       {!hasTelemetry(snapshot) ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-8 text-center text-sm text-zinc-400">
-            <BarChart3 className="size-5 text-violet-300" />
+            <BarChart3 className="size-5 text-pink-300" />
             <p>
               No telemetry yet. Valuation, NRA, and WALT stay at N/A until
               properties and leases are on file.

@@ -19,7 +19,7 @@ export default function SettingsPage() {
         <CardContent className="flex flex-col gap-3 text-sm text-zinc-400">
           <Link
             href="/security"
-            className="flex items-center gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/40 px-4 py-3 transition-colors hover:border-violet-400/40 hover:text-zinc-100"
+            className="flex items-center gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/40 px-4 py-3 transition-colors hover:border-pink-300/40 hover:text-zinc-100"
           >
             <Shield className="size-4 text-zinc-400" />
             <div>

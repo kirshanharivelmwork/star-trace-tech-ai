@@ -56,10 +56,10 @@ export const AppSidebar = () => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/" />}>
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-violet-500/20 text-violet-200 shadow-[0_0_18px_-4px_var(--glow-primary)]">
+              <span className="icon-well size-8">
                 <Sparkles className="size-3.5" />
               </span>
-              <span className="font-heading text-base font-medium tracking-tight">
+              <span className="font-heading text-base font-semibold tracking-tight">
                 StarFlow
               </span>
             </SidebarMenuButton>

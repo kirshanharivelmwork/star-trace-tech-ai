@@ -10,7 +10,7 @@ const PRIORITY_STYLES: Record<NoticePriority, string> = {
     "border-red-400/40 bg-red-500/15 text-red-200 shadow-[0_0_16px_-4px_rgba(239,68,68,0.8)]",
   high: "border-amber-400/40 bg-amber-500/15 text-amber-200 shadow-[0_0_16px_-4px_rgba(251,191,36,0.75)]",
   watch:
-    "border-violet-400/40 bg-violet-500/15 text-violet-200 shadow-[0_0_16px_-4px_var(--glow-primary)]",
+    "border-pink-300/40 bg-pink-400/15 text-pink-100 shadow-[0_0_16px_-4px_var(--glow-primary)]",
 }
 
 const PRIORITY_LABEL: Record<NoticePriority, string> = {
@@ -128,7 +128,7 @@ export const NoticeWindowAlerts = async () => {
     return (
       <Card className="border-zinc-800/80 bg-zinc-900/60 shadow-2xl backdrop-blur-xl">
         <CardContent className="flex flex-col items-center gap-2 py-8 text-center text-sm text-zinc-400">
-          <AlertTriangle className="size-5 text-violet-300" />
+          <AlertTriangle className="size-5 text-pink-300" />
           <p>Sign in to see upcoming notice-window alerts.</p>
         </CardContent>
       </Card>

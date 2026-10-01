@@ -6,7 +6,7 @@ import {
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { MetricTile } from "@/components/dashboard/metric-tile"
 import type { IntelligenceSnapshot } from "@/lib/telemetry/types"
 
 const formatUsd = (value: number | null) => {
@@ -71,20 +71,13 @@ export const IntelligenceMetrics = ({ snapshot }: IntelligenceMetricsProps) => {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {metrics.map((metric) => (
-        <Card key={metric.label}>
-          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-xs font-medium tracking-widest text-zinc-500 uppercase">
-              {metric.label}
-            </CardTitle>
-            <metric.icon className="size-4 text-violet-300" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-zinc-50">
-              {metric.value}
-            </div>
-            <p className="mt-1 text-xs text-zinc-400">{metric.hint}</p>
-          </CardContent>
-        </Card>
+        <MetricTile
+          key={metric.label}
+          label={metric.label}
+          value={metric.value}
+          hint={metric.hint}
+          icon={metric.icon}
+        />
       ))}
     </div>
   )

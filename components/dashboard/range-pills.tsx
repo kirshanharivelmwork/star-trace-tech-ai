@@ -30,7 +30,7 @@ export const RangePills = ({ value, onChange }: RangePillsProps) => {
             className={cn(
               "rounded-full px-3 py-1 text-xs font-medium tracking-wide transition-all",
               isActive
-                ? "bg-zinc-100 text-zinc-950 shadow-[0_0_18px_-6px_var(--glow-primary)]"
+                ? "bg-pink-200 text-zinc-950 shadow-[0_0_18px_-6px_var(--glow-primary)]"
                 : "text-zinc-400 hover:border-zinc-700 hover:text-zinc-100"
             )}
           >

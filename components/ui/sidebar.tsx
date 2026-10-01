@@ -242,7 +242,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col border-r border-zinc-800/80 bg-zinc-900/50 backdrop-blur-xl group-data-[variant=floating]:rounded-3xl group-data-[variant=floating]:border group-data-[variant=floating]:shadow-2xl group-data-[variant=inset]:rounded-3xl group-data-[variant=inset]:border group-data-[variant=inset]:border-zinc-800/80 group-data-[variant=inset]:bg-zinc-900/50 group-data-[variant=inset]:shadow-2xl"
+          className="glass-panel flex size-full flex-col border-r border-zinc-800/80 group-data-[variant=floating]:rounded-3xl group-data-[variant=floating]:border group-data-[variant=inset]:rounded-3xl group-data-[variant=inset]:border group-data-[variant=inset]:border-zinc-800/70"
         >
           {children}
         </div>
@@ -307,7 +307,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-transparent md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-3xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-zinc-800/80 md:peer-data-[variant=inset]:bg-zinc-900/40 md:peer-data-[variant=inset]:shadow-2xl md:peer-data-[variant=inset]:backdrop-blur-xl md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+        "relative flex w-full flex-1 flex-col bg-transparent md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-3xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-zinc-800/70 md:peer-data-[variant=inset]:bg-zinc-900/35 md:peer-data-[variant=inset]:shadow-[inset_0_1px_0_oklch(1_0_0_/_10%),0_24px_50px_-24px_oklch(0_0_0_/_80%)] md:peer-data-[variant=inset]:backdrop-blur-2xl md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}
       {...props}
@@ -475,7 +475,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-xl p-2 text-left text-sm text-zinc-400 ring-sidebar-ring outline-hidden transition-all group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-zinc-800/60 hover:text-zinc-50 focus-visible:ring-2 active:bg-zinc-800/60 active:text-zinc-50 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-zinc-800/60 data-open:hover:text-zinc-50 data-active:border data-active:border-violet-400/30 data-active:bg-violet-500/15 data-active:font-medium data-active:text-zinc-50 data-active:shadow-[0_0_20px_-8px_var(--glow-primary)] [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-xl p-2 text-left text-sm text-zinc-400 ring-sidebar-ring outline-hidden transition-all group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-zinc-800/60 hover:text-zinc-50 focus-visible:ring-2 active:bg-zinc-800/60 active:text-zinc-50 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-zinc-800/60 data-open:hover:text-zinc-50 data-active:border data-active:border-pink-300/30 data-active:bg-pink-400/15 data-active:font-medium data-active:text-zinc-50 data-active:shadow-[0_0_20px_-8px_var(--glow-primary)] [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {

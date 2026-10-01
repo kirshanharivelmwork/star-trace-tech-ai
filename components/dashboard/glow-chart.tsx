@@ -21,8 +21,7 @@ const buildSmoothPath = (points: Array<{ x: number; y: number }>) => {
 /**
  * Sleek glowing area chart used on Analytics (and optionally Overview).
  * Pure SVG — no charting library — so it stays server-component friendly
- * and matches the dark tooltip / violet-magenta gradient spec without
- * adding a new dependency.
+ * and matches the soft pink line from the 3D banking reference.
  */
 export const GlowChart = ({
   values,
@@ -61,12 +60,12 @@ export const GlowChart = ({
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="oklch(0.667 0.295 322.15)" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="oklch(0.606 0.25 292.717)" stopOpacity="0" />
+            <stop offset="0%" stopColor="#e8b8f8" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#e8b8f8" stopOpacity="0" />
           </linearGradient>
           <linearGradient id={strokeId} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="oklch(0.606 0.25 292.717)" />
-            <stop offset="100%" stopColor="oklch(0.72 0.28 322.15)" />
+            <stop offset="0%" stopColor="#f0c4ff" />
+            <stop offset="100%" stopColor="#e879f9" />
           </linearGradient>
           <filter id={blurId} x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="4" />
@@ -95,7 +94,7 @@ export const GlowChart = ({
               cx={point.x}
               cy={point.y}
               r="7"
-              className="fill-violet-400/20"
+              className="fill-pink-300/30"
             />
             <circle
               cx={point.x}

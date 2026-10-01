@@ -69,7 +69,7 @@ export const TenantRiskTable = ({ rows, counts }: TenantRiskTableProps) => {
                 {rows.map((row) => (
                   <tr
                     key={row.telemetryId}
-                    className="transition-colors hover:bg-violet-500/5"
+                    className="transition-colors hover:bg-pink-400/5"
                   >
                     <td className="px-4 py-3 font-medium tracking-tight text-zinc-50">
                       {row.tenantName}

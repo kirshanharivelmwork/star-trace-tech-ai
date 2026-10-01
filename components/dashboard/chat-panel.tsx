@@ -74,7 +74,7 @@ export const ChatPanel = () => {
                   key={message.id}
                   className={
                     message.role === "user"
-                      ? "ml-auto max-w-[85%] rounded-2xl border border-violet-400/30 bg-violet-500/20 px-3 py-2 text-sm text-zinc-50 shadow-[0_0_18px_-8px_var(--glow-primary)]"
+                      ? "ml-auto max-w-[85%] rounded-2xl border border-pink-300/30 bg-pink-400/20 px-3 py-2 text-sm text-zinc-50 shadow-[0_0_18px_-8px_var(--glow-primary)]"
                       : "mr-auto max-w-[85%] rounded-2xl border border-zinc-800/80 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-200"
                   }
                 >

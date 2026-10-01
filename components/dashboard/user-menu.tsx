@@ -193,7 +193,7 @@ export const UserMenu = () => {
               className={cn(
                 "rounded-xl px-3 py-2 text-sm font-medium tracking-wide transition-all",
                 mode === "signin"
-                  ? "bg-zinc-100 text-zinc-950 shadow-[0_0_18px_-6px_var(--glow-primary)]"
+                  ? "bg-pink-200 text-zinc-950 shadow-[0_0_18px_-6px_var(--glow-primary)]"
                   : "text-zinc-400 hover:text-zinc-100"
               )}
             >
@@ -208,7 +208,7 @@ export const UserMenu = () => {
               className={cn(
                 "rounded-xl px-3 py-2 text-sm font-medium tracking-wide transition-all",
                 mode === "signup"
-                  ? "bg-zinc-100 text-zinc-950 shadow-[0_0_18px_-6px_var(--glow-primary)]"
+                  ? "bg-pink-200 text-zinc-950 shadow-[0_0_18px_-6px_var(--glow-primary)]"
                   : "text-zinc-400 hover:text-zinc-100"
               )}
             >

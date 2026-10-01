@@ -79,7 +79,7 @@ export const EnterpriseCommandCenter = ({
               className={cn(
                 "flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left transition-all",
                 isActive
-                  ? "bg-zinc-100 text-zinc-950 shadow-[0_0_22px_-8px_var(--glow-primary)]"
+                  ? "bg-pink-200 text-zinc-950 shadow-[0_0_22px_-8px_var(--glow-primary)]"
                   : "text-zinc-400 hover:bg-zinc-950/40 hover:text-zinc-100"
               )}
             >

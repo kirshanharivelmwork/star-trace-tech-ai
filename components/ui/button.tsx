@@ -11,9 +11,9 @@ const buttonVariants = cva(
         // violet glow instead of just darkening the fill — "tactile...
         // subtle border illumination instead of harsh solid fills".
         default:
-          "border-primary/30 bg-primary/90 text-primary-foreground hover:border-primary hover:bg-primary hover:shadow-[0_0_28px_-4px_var(--glow-primary)]",
+          "border-primary/40 bg-primary text-primary-foreground shadow-[inset_0_1px_0_oklch(1_0_0_/_35%),0_8px_20px_-8px_var(--glow-primary)] hover:border-primary hover:bg-primary hover:shadow-[inset_0_1px_0_oklch(1_0_0_/_45%),0_0_28px_-4px_var(--glow-primary)]",
         outline:
-          "border-zinc-700/80 bg-zinc-950/40 hover:border-violet-400/50 hover:bg-zinc-900/60 hover:text-foreground hover:shadow-[0_0_20px_-6px_var(--glow-primary)] aria-expanded:border-violet-400/50 aria-expanded:bg-zinc-900/60 dark:border-zinc-800 dark:bg-zinc-950/30 dark:hover:bg-zinc-900/50",
+          "border-zinc-700/80 bg-zinc-950/40 hover:border-pink-300/50 hover:bg-zinc-900/60 hover:text-foreground hover:shadow-[0_0_20px_-6px_var(--glow-primary)] aria-expanded:border-pink-300/50 aria-expanded:bg-zinc-900/60 dark:border-zinc-800 dark:bg-zinc-950/30 dark:hover:bg-zinc-900/50",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] hover:shadow-[0_0_16px_-6px_var(--glow-primary)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
