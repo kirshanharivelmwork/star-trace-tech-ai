@@ -32,15 +32,15 @@ export default async function LandingPage() {
         </Link>
         <div className="flex items-center gap-3">
           {user ? (
-            <Button render={<Link href="/app" />} size="sm">
+            <Button render={<Link href="/app" />} nativeButton={false} size="sm">
               Dashboard
             </Button>
           ) : (
             <>
-              <Button render={<Link href="/login" />} variant="ghost" size="sm">
+              <Button render={<Link href="/login" />} nativeButton={false} variant="ghost" size="sm">
                 Sign in
               </Button>
-              <Button render={<Link href="/login" />} size="sm">
+              <Button render={<Link href="/login" />} nativeButton={false} size="sm">
                 Start free
               </Button>
             </>
@@ -61,7 +61,12 @@ export default async function LandingPage() {
           lessee ASC 842 / IFRS 16 calculator.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Button render={<Link href={primaryHref} />} size="lg" className="rounded-2xl">
+          <Button
+            render={<Link href={primaryHref} />}
+            nativeButton={false}
+            size="lg"
+            className="rounded-2xl"
+          >
             {primaryLabel}
           </Button>
           <p className="self-center text-sm text-zinc-500">
