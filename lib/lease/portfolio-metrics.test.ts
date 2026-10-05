@@ -7,6 +7,7 @@ import {
   parseNoticeDeadlines,
   parseSquareFootage,
   parseTermYears,
+  resolveCronThreshold,
 } from "@/lib/lease/portfolio-metrics"
 
 describe("parseLeaseDate", () => {
@@ -68,5 +69,29 @@ describe("parseNoticeDeadlines", () => {
 describe("categorizeLeaseExpirationRisk", () => {
   it("flags missing dates as needs_review", () => {
     expect(categorizeLeaseExpirationRisk(null)).toBe("needs_review")
+  })
+})
+
+describe("resolveCronThreshold", () => {
+  it("fires exactly on the 90/60/30 day thresholds", () => {
+    expect(resolveCronThreshold(90)).toBe(90)
+    expect(resolveCronThreshold(60)).toBe(60)
+    expect(resolveCronThreshold(30)).toBe(30)
+  })
+
+  it("keeps an alert due for the retry grace window after a threshold", () => {
+    expect(resolveCronThreshold(89)).toBe(90)
+    expect(resolveCronThreshold(88)).toBe(90)
+    expect(resolveCronThreshold(58)).toBe(60)
+    expect(resolveCronThreshold(28)).toBe(30)
+  })
+
+  it("returns null outside every window", () => {
+    expect(resolveCronThreshold(91)).toBeNull()
+    expect(resolveCronThreshold(87)).toBeNull()
+    expect(resolveCronThreshold(75)).toBeNull()
+    expect(resolveCronThreshold(61)).toBeNull()
+    expect(resolveCronThreshold(27)).toBeNull()
+    expect(resolveCronThreshold(0)).toBeNull()
   })
 })

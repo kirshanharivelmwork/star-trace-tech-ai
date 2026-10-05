@@ -2,15 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { Resend } from "resend"
 
 import {
-  getExactThresholdLeaseAlerts,
-  CRON_ALERT_THRESHOLDS_DAYS,
+  getCronDueLeaseAlerts,
+  resolveCronThreshold,
   type LeaseAlert,
   type PortfolioLeaseRow,
 } from "@/lib/lease/portfolio-metrics"
-import {
-  calendarDaysUntil,
-  parseIsoDate,
-} from "@/lib/enterprise/metrics"
+import { calendarDaysUntil, parseIsoDate } from "@/lib/enterprise/metrics"
 import { getAppUrl, getResendFromAddress } from "@/lib/email/from"
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -18,99 +15,248 @@ import { createAdminClient } from "@/lib/supabase/admin"
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
-// `Resend` accepts an undefined key without throwing at construction time;
-// the actual request-time call inside sendLeaseAlertEmail's try/catch is
-// what fails loudly (and is logged, not thrown) if RESEND_API_KEY is unset.
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 const DASHBOARD_URL = `${getAppUrl()}/app`
-const FROM_ADDRESS = getResendFromAddress()
 
 const ADMIN_ROLES = new Set(["owner", "admin"])
 
-const resolveOrgAdminEmails = async (
-  supabaseAdmin: SupabaseClient,
-  organizationId: string | null | undefined
-): Promise<string[]> => {
-  if (!organizationId) return []
+type SendResult = { ok: true } | { ok: false; reason: string }
 
-  const { data, error } = await supabaseAdmin
-    .from("organization_members")
-    .select("user_id, role")
-    .eq("org_id", organizationId)
+type DispatchKey = {
+  organizationId: string
+  leaseId?: string | null
+  abstractId?: string | null
+  alertType: string
+  thresholdDays: number
+}
 
-  if (error) {
-    console.error("[CRON] organization_members:", error.message)
-    return []
+/** Per-source tally; surfaced in the JSON response so failures are visible. */
+type Tally = {
+  /** Alerts with >= 1 successful email, recorded in alert_dispatches. */
+  sent: number
+  /** Alerts where no recipient could be emailed; NOT recorded, so retried. */
+  failed: number
+  /** Alerts already dispatched earlier (e.g. a second cron run today). */
+  skipped: number
+  emailsSent: number
+  emailsFailed: number
+}
+
+const newTally = (): Tally => ({
+  sent: 0,
+  failed: 0,
+  skipped: 0,
+  emailsSent: 0,
+  emailsFailed: 0,
+})
+
+/**
+ * Resolves recipient emails with per-run memoisation so each organisation's
+ * member list and each user's auth record is fetched at most once per cron
+ * run, however many alerts they appear in (avoids N+1 getUserById calls).
+ */
+const createRecipientResolver = (supabaseAdmin: SupabaseClient) => {
+  const userEmailCache = new Map<string, Promise<string | null>>()
+  const orgAdminCache = new Map<string, Promise<string[]>>()
+
+  const getUserEmail = (userId: string): Promise<string | null> => {
+    const cached = userEmailCache.get(userId)
+    if (cached) return cached
+
+    const lookup = (async () => {
+      try {
+        const { data, error } =
+          await supabaseAdmin.auth.admin.getUserById(userId)
+        if (error || !data?.user?.email) {
+          console.error(
+            `[CRON] No email for user_id ${userId}:`,
+            error?.message ?? "user has no email on file"
+          )
+          return null
+        }
+        return data.user.email
+      } catch (lookupError) {
+        console.error("[CRON] getUserById failed:", lookupError)
+        return null
+      }
+    })()
+
+    userEmailCache.set(userId, lookup)
+    return lookup
   }
 
-  const userIds = (data ?? [])
-    .filter((row: { role: string | null }) =>
-      ADMIN_ROLES.has((row.role ?? "").toLowerCase())
-    )
-    .map((row: { user_id: string }) => row.user_id)
+  const getOrgAdminEmails = (organizationId: string): Promise<string[]> => {
+    const cached = orgAdminCache.get(organizationId)
+    if (cached) return cached
 
-  const emails: string[] = []
-  for (const userId of userIds) {
-    try {
-      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(userId)
-      if (userData?.user?.email) emails.push(userData.user.email)
-    } catch (lookupError) {
-      console.error("[CRON] getUserById failed:", lookupError)
+    const lookup = (async () => {
+      const { data, error } = await supabaseAdmin
+        .from("organization_members")
+        .select("user_id, role")
+        .eq("org_id", organizationId)
+
+      if (error) {
+        console.error("[CRON] organization_members:", error.message)
+        return []
+      }
+
+      const adminIds = (data ?? [])
+        .filter((row: { role: string | null }) =>
+          ADMIN_ROLES.has((row.role ?? "").toLowerCase())
+        )
+        .map((row: { user_id: string }) => row.user_id)
+
+      const emails = await Promise.all(adminIds.map(getUserEmail))
+      return [...new Set(emails.filter((e): e is string => Boolean(e)))]
+    })()
+
+    orgAdminCache.set(organizationId, lookup)
+    return lookup
+  }
+
+  /** Org owners/admins if any resolve; otherwise the record's owner. */
+  const resolveRecipients = async (params: {
+    organizationId: string | null
+    userId: string | null | undefined
+  }): Promise<string[]> => {
+    if (params.organizationId) {
+      const admins = await getOrgAdminEmails(params.organizationId)
+      if (admins.length > 0) return admins
     }
+    if (!params.userId) return []
+    const email = await getUserEmail(params.userId)
+    return email ? [email] : []
   }
-  return [...new Set(emails)]
+
+  return { resolveRecipients }
 }
 
 const wasDispatched = async (
   supabaseAdmin: SupabaseClient,
-  params: {
-    organizationId: string | null
-    leaseId?: string | null
-    abstractId?: string | null
-    alertType: string
-    thresholdDays: number
-  }
+  key: DispatchKey
 ): Promise<boolean> => {
-  if (!params.organizationId) return false
   let query = supabaseAdmin
     .from("alert_dispatches")
     .select("id", { head: true, count: "exact" })
-    .eq("organization_id", params.organizationId)
-    .eq("alert_type", params.alertType)
-    .eq("threshold_days", params.thresholdDays)
+    .eq("organization_id", key.organizationId)
+    .eq("alert_type", key.alertType)
+    .eq("threshold_days", key.thresholdDays)
 
-  if (params.leaseId) query = query.eq("lease_id", params.leaseId)
-  if (params.abstractId) query = query.eq("abstract_id", params.abstractId)
+  query = key.leaseId
+    ? query.eq("lease_id", key.leaseId)
+    : query.is("lease_id", null)
+  query = key.abstractId
+    ? query.eq("abstract_id", key.abstractId)
+    : query.is("abstract_id", null)
 
   const { count, error } = await query
   if (error) {
+    // Fail open: worst case is a duplicate email, which the unique index +
+    // ON CONFLICT DO NOTHING below still prevents from being double-recorded.
     console.error("[CRON] alert_dispatches lookup:", error.message)
     return false
   }
   return (count ?? 0) > 0
 }
 
+/**
+ * Records a dispatch. Idempotent: backed by the unique index on
+ * (organization_id, alert_type, threshold_days, lease_id, abstract_id)
+ * (NULLS NOT DISTINCT — see migration 20261005) and ON CONFLICT DO NOTHING
+ * via `ignoreDuplicates`, so concurrent/repeated runs never error or
+ * double-insert.
+ */
 const markDispatched = async (
   supabaseAdmin: SupabaseClient,
-  params: {
-    organizationId: string | null
-    leaseId?: string | null
-    abstractId?: string | null
-    alertType: string
-    thresholdDays: number
-  }
-) => {
-  if (!params.organizationId) return
-  const { error } = await supabaseAdmin.from("alert_dispatches").insert({
-    organization_id: params.organizationId,
-    lease_id: params.leaseId ?? null,
-    abstract_id: params.abstractId ?? null,
-    alert_type: params.alertType,
-    threshold_days: params.thresholdDays,
-  })
+  key: DispatchKey
+): Promise<boolean> => {
+  const { error } = await supabaseAdmin.from("alert_dispatches").upsert(
+    {
+      organization_id: key.organizationId,
+      lease_id: key.leaseId ?? null,
+      abstract_id: key.abstractId ?? null,
+      alert_type: key.alertType,
+      threshold_days: key.thresholdDays,
+    },
+    {
+      onConflict:
+        "organization_id,alert_type,threshold_days,lease_id,abstract_id",
+      ignoreDuplicates: true,
+    }
+  )
   if (error) {
     console.error("[CRON] alert_dispatches insert:", error.message)
+    return false
+  }
+  return true
+}
+
+/**
+ * Emails every recipient, then records the dispatch ONLY if at least one
+ * email actually went out. If all sends fail the alert is left unrecorded
+ * so a later run (within the retry grace window) tries again.
+ */
+const deliverAndRecord = async (params: {
+  supabaseAdmin: SupabaseClient
+  tally: Tally
+  key: DispatchKey
+  recipients: string[]
+  label: string
+  send: (to: string) => Promise<SendResult>
+}) => {
+  const { supabaseAdmin, tally, key, recipients, label, send } = params
+
+  if (recipients.length === 0) {
+    console.warn(`[CRON] No deliverable recipients for ${label}; will retry.`)
+    tally.failed += 1
+    return
+  }
+
+  let delivered = 0
+  for (const recipient of recipients) {
+    const result = await send(recipient)
+    if (result.ok) {
+      delivered += 1
+      tally.emailsSent += 1
+      continue
+    }
+    tally.emailsFailed += 1
+  }
+
+  if (delivered === 0) {
+    console.error(
+      `[CRON] All ${recipients.length} email(s) failed for ${label}.`
+    )
+    tally.failed += 1
+    return
+  }
+
+  if (delivered < recipients.length) {
+    console.warn(
+      `[CRON] ${recipients.length - delivered}/${recipients.length} email(s) failed for ${label}; marking dispatched (>= 1 delivered).`
+    )
+  }
+
+  tally.sent += 1
+  await markDispatched(supabaseAdmin, key)
+}
+
+const sendEmail = async (
+  resend: Resend,
+  message: { from: string; to: string; subject: string; html: string }
+): Promise<SendResult> => {
+  try {
+    const { error } = await resend.emails.send(message)
+    if (error) {
+      console.error("[CRON] Resend API error:", error.message)
+      return { ok: false, reason: error.message }
+    }
+    return { ok: true }
+  } catch (error) {
+    console.error("[CRON] Unexpected error sending email:", error)
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : "Unknown send error",
+    }
   }
 }
 
@@ -195,64 +341,29 @@ const buildAlertEmailHtml = (params: {
 }
 
 /**
- * Looks up the recipient's email via the service-role Supabase Admin API
- * and sends the alert through Resend. Wrapped in try/catch by the caller's
- * expectations — this function itself also never throws: a failure here
- * (missing user, missing email, or a Resend API error) is logged and
- * swallowed so one bad lease/user never aborts the rest of the daily run.
+ * Sends one lease alert to one recipient. Never throws; returns whether the
+ * email was accepted by Resend so the caller can decide whether to record
+ * the dispatch.
  */
-const sendLeaseAlertEmail = async (params: {
-  userId: string
-  overrideEmail?: string
+const sendLeaseAlertEmail = (params: {
+  resend: Resend
+  from: string
+  to: string
   alert: LeaseAlert
-  supabaseAdmin: SupabaseClient
-}) => {
-  const { userId, alert, supabaseAdmin, overrideEmail } = params
-
-  try {
-    let recipientEmail = overrideEmail
-    if (!recipientEmail) {
-      const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
-
-      if (error || !data?.user?.email) {
-        console.error(
-          `[CRON] Skipping email for user_id ${userId} — could not resolve an email address:`,
-          error?.message ?? "user has no email on file"
-        )
-        return
-      }
-      recipientEmail = data.user.email
-    }
-
-    console.log(
-      `[CRON] Sending email to user_id: ${userId} (${recipientEmail}) — Warning, lease "${alert.fileName}" ${alert.message} (${alert.daysUntil} day(s) away)`
-    )
-
-    const { error: sendError } = await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: recipientEmail,
-      subject: `⚠️ Action Required: Lease Deadline Alert (${alert.fileName})`,
-      html: buildAlertEmailHtml({
-        fileName: alert.fileName,
-        tenantName: alert.tenantName,
-        milestoneDate: alert.date,
-        daysUntil: alert.daysUntil,
-        deadlineType: alert.type,
-      }),
-    })
-
-    if (sendError) {
-      console.error(
-        `[CRON] Resend API error sending to ${recipientEmail}:`,
-        sendError.message
-      )
-    }
-  } catch (error) {
-    console.error(
-      `[CRON] Unexpected error sending lease alert email for user_id ${userId}:`,
-      error
-    )
-  }
+}): Promise<SendResult> => {
+  const { resend, from, to, alert } = params
+  return sendEmail(resend, {
+    from,
+    to,
+    subject: `⚠️ Action Required: Lease Deadline Alert (${alert.fileName})`,
+    html: buildAlertEmailHtml({
+      fileName: alert.fileName,
+      tenantName: alert.tenantName,
+      milestoneDate: alert.date,
+      daysUntil: alert.daysUntil,
+      deadlineType: alert.type,
+    }),
+  })
 }
 
 type NoticeWindowCronRow = {
@@ -339,69 +450,52 @@ const buildNoticeWindowEmailHtml = (params: {
 </html>`
 }
 
-const sendNoticeWindowEmail = async (params: {
-  userId: string
-  overrideEmail?: string
+const sendNoticeWindowEmail = (params: {
+  resend: Resend
+  from: string
+  to: string
   tenantName: string
   propertyName: string
   targetDate: Date
   daysUntil: number
+}): Promise<SendResult> => {
+  const { resend, from, to } = params
+  return sendEmail(resend, {
+    from,
+    to,
+    subject: `⚠️ Action Required: Notice window (${params.tenantName})`,
+    html: buildNoticeWindowEmailHtml({
+      tenantName: params.tenantName,
+      propertyName: params.propertyName,
+      targetDate: params.targetDate,
+      daysUntil: params.daysUntil,
+    }),
+  })
+}
+
+type CronContext = {
   supabaseAdmin: SupabaseClient
-}) => {
-  const { userId, supabaseAdmin, overrideEmail } = params
-
-  try {
-    let recipientEmail = overrideEmail
-    if (!recipientEmail) {
-      const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
-
-      if (error || !data?.user?.email) {
-        console.error(
-          `[CRON] Skipping notice email for user_id ${userId} — could not resolve an email address:`,
-          error?.message ?? "user has no email on file"
-        )
-        return
-      }
-      recipientEmail = data.user.email
-    }
-
-    const { error: sendError } = await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: recipientEmail,
-      subject: `⚠️ Action Required: Notice window (${params.tenantName})`,
-      html: buildNoticeWindowEmailHtml({
-        tenantName: params.tenantName,
-        propertyName: params.propertyName,
-        targetDate: params.targetDate,
-        daysUntil: params.daysUntil,
-      }),
-    })
-
-    if (sendError) {
-      console.error(
-        `[CRON] Resend API error sending notice window to ${recipientEmail}:`,
-        sendError.message
-      )
-    }
-  } catch (error) {
-    console.error(
-      `[CRON] Unexpected error sending notice window email for user_id ${userId}:`,
-      error
-    )
-  }
+  resend: Resend
+  from: string
+  resolveRecipients: ReturnType<
+    typeof createRecipientResolver
+  >["resolveRecipients"]
+  now: Date
 }
 
 const processNoticeWindows = async (
-  supabaseAdmin: SupabaseClient,
-  now: Date = new Date()
-): Promise<{ processedWindows: number; noticeAlertsSent: number }> => {
+  ctx: CronContext
+): Promise<{ processedWindows: number; tally: Tally }> => {
+  const { supabaseAdmin, resend, from, resolveRecipients, now } = ctx
+  const tally = newTally()
+
   const { data: windowData, error: windowError } = await supabaseAdmin
     .from("notice_windows")
     .select("id, lease_id, status, target_date")
 
   if (windowError) {
     console.error("[CRON] Failed to fetch notice_windows:", windowError.message)
-    return { processedWindows: 0, noticeAlertsSent: 0 }
+    return { processedWindows: 0, tally }
   }
 
   const windows = (windowData ?? []) as NoticeWindowCronRow[]
@@ -459,9 +553,6 @@ const processNoticeWindows = async (
   const propertyById = new Map(
     properties.map((property) => [property.id, property])
   )
-  const thresholds = new Set<number>(CRON_ALERT_THRESHOLDS_DAYS)
-
-  let noticeAlertsSent = 0
 
   for (const window of windows) {
     const status = window.status?.trim().toLowerCase() ?? ""
@@ -471,7 +562,8 @@ const processNoticeWindows = async (
     if (!targetDate) continue
 
     const daysUntil = calendarDaysUntil(targetDate, now)
-    if (!thresholds.has(daysUntil)) continue
+    const thresholdDays = resolveCronThreshold(daysUntil)
+    if (thresholdDays === null) continue
 
     const lease = window.lease_id ? leaseById.get(window.lease_id) : undefined
     const property = lease?.property_id
@@ -480,60 +572,119 @@ const processNoticeWindows = async (
     const userId = property?.user_id
     const organizationId = property?.organization_id
 
-    if (!userId && !organizationId) {
+    // Dedupe is keyed on organization_id; without one we cannot guarantee
+    // at-most-once delivery, so surface it as failed instead of emailing daily.
+    if (!organizationId) {
       console.warn(
-        `[CRON] Skipping notice window ${window.id} — could not resolve property owner.`
+        `[CRON] Skipping notice window ${window.id} — property has no organization_id.`
       )
+      tally.failed += 1
       continue
     }
 
-    if (
-      await wasDispatched(supabaseAdmin, {
-        organizationId: organizationId ?? null,
-        leaseId: window.lease_id,
-        alertType: "notice_window",
-        thresholdDays: daysUntil,
-      })
-    ) {
-      continue
-    }
-
-    const adminEmails = await resolveOrgAdminEmails(supabaseAdmin, organizationId)
-    const recipients = adminEmails.length > 0 ? adminEmails : null
-
-    if (recipients) {
-      for (const email of recipients) {
-        await sendNoticeWindowEmail({
-          userId: userId ?? "org",
-          overrideEmail: email,
-          tenantName: lease?.tenant_name?.trim() || "Unnamed tenant",
-          propertyName: property?.name?.trim() || "Unassigned asset",
-          targetDate,
-          daysUntil,
-          supabaseAdmin,
-        })
-      }
-    } else if (userId) {
-      await sendNoticeWindowEmail({
-        userId,
-        tenantName: lease?.tenant_name?.trim() || "Unnamed tenant",
-        propertyName: property?.name?.trim() || "Unassigned asset",
-        targetDate,
-        daysUntil,
-        supabaseAdmin,
-      })
-    }
-
-    await markDispatched(supabaseAdmin, {
-      organizationId: organizationId ?? null,
+    const key: DispatchKey = {
+      organizationId,
       leaseId: window.lease_id,
       alertType: "notice_window",
-      thresholdDays: daysUntil,
+      thresholdDays,
+    }
+
+    if (await wasDispatched(supabaseAdmin, key)) {
+      tally.skipped += 1
+      continue
+    }
+
+    const recipients = await resolveRecipients({ organizationId, userId })
+    const tenantName = lease?.tenant_name?.trim() || "Unnamed tenant"
+    const propertyName = property?.name?.trim() || "Unassigned asset"
+
+    await deliverAndRecord({
+      supabaseAdmin,
+      tally,
+      key,
+      recipients,
+      label: `notice window ${window.id}`,
+      send: (to) =>
+        sendNoticeWindowEmail({
+          resend,
+          from,
+          to,
+          tenantName,
+          propertyName,
+          targetDate,
+          daysUntil,
+        }),
     })
-    noticeAlertsSent += 1
   }
 
-  return { processedWindows: windows.length, noticeAlertsSent }
+  return { processedWindows: windows.length, tally }
+}
+
+const processLeaseAlerts = async (
+  ctx: CronContext
+): Promise<{ processedLeases: number; tally: Tally } | { error: string }> => {
+  const { supabaseAdmin, resend, from, resolveRecipients, now } = ctx
+  const tally = newTally()
+
+  const { data, error } = await supabaseAdmin
+    .from("lease_abstracts")
+    .select("id, file_name, abstract_data, user_id, organization_id")
+
+  if (error) {
+    console.error("[CRON] Failed to fetch lease_abstracts:", error.message)
+    return { error: "Failed to fetch lease_abstracts." }
+  }
+
+  const records = (data ?? []) as PortfolioLeaseRow[]
+
+  // Expiration dates only (90/60/30 days out, plus the retry grace window);
+  // rent-review alerts are intentionally excluded here even though the
+  // in-app bell shows them.
+  const alerts = getCronDueLeaseAlerts(records, now).filter(
+    (alert) => alert.type === "expiration"
+  )
+
+  const recordsById = new Map(records.map((record) => [record.id, record]))
+
+  for (const alert of alerts) {
+    const record = recordsById.get(alert.recordId)
+    const userId = record?.user_id
+    const organizationId = record?.organization_id ?? null
+
+    // See note in processNoticeWindows: dedupe requires an organization_id.
+    if (!organizationId) {
+      console.warn(
+        `[CRON] Skipping alert for abstract ${alert.recordId} — record has no organization_id.`
+      )
+      tally.failed += 1
+      continue
+    }
+
+    const key: DispatchKey = {
+      organizationId,
+      abstractId: alert.recordId,
+      alertType: alert.type,
+      thresholdDays: alert.thresholdDays,
+    }
+
+    if (await wasDispatched(supabaseAdmin, key)) {
+      tally.skipped += 1
+      continue
+    }
+
+    const recipients = await resolveRecipients({ organizationId, userId })
+
+    await deliverAndRecord({
+      supabaseAdmin,
+      tally,
+      key,
+      recipients,
+      label: `abstract ${alert.recordId} (${alert.type}, ${alert.thresholdDays}d)`,
+      send: (to) => sendLeaseAlertEmail({ resend, from, to, alert }),
+    })
+  }
+
+  return { processedLeases: records.length, tally }
 }
 
 export async function GET(request: Request) {
@@ -554,11 +705,18 @@ export async function GET(request: Request) {
     return new Response("Unauthorized", { status: 401 })
   }
 
+  const resendApiKey = process.env.RESEND_API_KEY
+  if (!resendApiKey) {
+    console.error("[CRON] RESEND_API_KEY is not configured; refusing to run.")
+    return new Response("RESEND_API_KEY is not configured on the server.", {
+      status: 500,
+    })
+  }
+
   // Service-role client: intentionally bypasses RLS. This is a
   // system-level background job (there is no signed-in "caller" — it's
   // triggered by Vercel Cron), so it must see every tenant's leases, not
-  // just one user's. Also used below via `.auth.admin.getUserById` to
-  // resolve each recipient's email address.
+  // just one user's. Also used to resolve each recipient's email address.
   let supabaseAdmin: SupabaseClient
   try {
     supabaseAdmin = createAdminClient()
@@ -570,88 +728,39 @@ export async function GET(request: Request) {
     )
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("lease_abstracts")
-    .select("id, file_name, abstract_data, user_id, organization_id")
-
-  if (error) {
-    console.error("[CRON] Failed to fetch lease_abstracts:", error.message)
-    return new Response("Failed to fetch lease_abstracts.", { status: 500 })
+  const ctx: CronContext = {
+    supabaseAdmin,
+    resend: new Resend(resendApiKey),
+    from: getResendFromAddress(),
+    resolveRecipients: createRecipientResolver(supabaseAdmin).resolveRecipients,
+    now: new Date(),
   }
 
-  const records = (data ?? []) as PortfolioLeaseRow[]
-
-  // Spec calls out expiration dates specifically (exactly 90/60/30 days
-  // out); rent-review alerts are intentionally excluded here even though
-  // getExactThresholdLeaseAlerts supports them, so the in-app bell (which
-  // does show rent-review alerts) and this cron job can each surface a
-  // slightly different, deliberately-scoped set.
-  const alerts = getExactThresholdLeaseAlerts(records).filter(
-    (alert) => alert.type === "expiration"
-  )
-
-  const recordsById = new Map(records.map((record) => [record.id, record]))
-
-  let sentCount = 0
-  for (const alert of alerts) {
-    const record = recordsById.get(alert.recordId)
-    const userId = record?.user_id
-    const organizationId = record?.organization_id ?? null
-
-    if (!userId && !organizationId) {
-      console.warn(
-        `[CRON] Skipping alert for "${alert.fileName}" — record has no user_id or org.`
-      )
-      continue
-    }
-
-    if (
-      await wasDispatched(supabaseAdmin, {
-        organizationId,
-        abstractId: alert.recordId,
-        alertType: alert.type,
-        thresholdDays: alert.daysUntil,
-      })
-    ) {
-      continue
-    }
-
-    const adminEmails = await resolveOrgAdminEmails(supabaseAdmin, organizationId)
-    if (adminEmails.length > 0) {
-      for (const email of adminEmails) {
-        await sendLeaseAlertEmail({
-          userId: userId ?? "org",
-          overrideEmail: email,
-          alert,
-          supabaseAdmin,
-        })
-      }
-    } else if (userId) {
-      await sendLeaseAlertEmail({ userId, alert, supabaseAdmin })
-    }
-
-    await markDispatched(supabaseAdmin, {
-      organizationId,
-      abstractId: alert.recordId,
-      alertType: alert.type,
-      thresholdDays: alert.daysUntil,
-    })
-    sentCount += 1
+  const leaseResult = await processLeaseAlerts(ctx)
+  if ("error" in leaseResult) {
+    return new Response(leaseResult.error, { status: 500 })
   }
 
-  console.log(
-    `[CRON] Processed ${records.length} lease(s); attempted ${sentCount} abstract alert(s).`
-  )
+  const noticeResult = await processNoticeWindows(ctx)
 
-  const noticeResult = await processNoticeWindows(supabaseAdmin)
+  const { tally: leaseTally } = leaseResult
+  const { tally: noticeTally } = noticeResult
+
   console.log(
-    `[CRON] Processed ${noticeResult.processedWindows} notice window(s); attempted ${noticeResult.noticeAlertsSent} notice alert(s).`
+    `[CRON] Leases: ${leaseResult.processedLeases} processed, ${leaseTally.sent} sent, ${leaseTally.failed} failed, ${leaseTally.skipped} already dispatched. ` +
+      `Notice windows: ${noticeResult.processedWindows} processed, ${noticeTally.sent} sent, ${noticeTally.failed} failed, ${noticeTally.skipped} already dispatched.`
   )
 
   return Response.json({
-    processedLeases: records.length,
-    alertsSent: sentCount,
+    processedLeases: leaseResult.processedLeases,
+    alertsSent: leaseTally.sent,
+    alertsFailed: leaseTally.failed,
+    alertsSkipped: leaseTally.skipped,
     processedNoticeWindows: noticeResult.processedWindows,
-    noticeAlertsSent: noticeResult.noticeAlertsSent,
+    noticeAlertsSent: noticeTally.sent,
+    noticeAlertsFailed: noticeTally.failed,
+    noticeAlertsSkipped: noticeTally.skipped,
+    emailsSent: leaseTally.emailsSent + noticeTally.emailsSent,
+    emailsFailed: leaseTally.emailsFailed + noticeTally.emailsFailed,
   })
 }

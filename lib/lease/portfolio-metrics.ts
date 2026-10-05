@@ -392,6 +392,51 @@ export const getExactThresholdLeaseAlerts = (
   )
 }
 
+/**
+ * How many days after a threshold (90/60/30) an alert is still considered
+ * "due". Without this, a failed send on day 90 could never be retried: the
+ * next cron run sees 89 days and matches nothing. Dispatch de-duplication is
+ * keyed on the threshold (not the actual day count), so a retry that
+ * succeeds is still sent at most once per threshold.
+ */
+export const CRON_RETRY_GRACE_DAYS = 3
+
+/**
+ * Maps a day-count to the cron threshold it belongs to, or null if it is
+ * outside every threshold's [threshold - grace + 1, threshold] window.
+ * e.g. with thresholds 90/60/30 and grace 3: 90, 89, 88 -> 90; 87 -> null.
+ */
+export const resolveCronThreshold = (
+  daysUntil: number,
+  thresholds: readonly number[] = CRON_ALERT_THRESHOLDS_DAYS,
+  graceDays: number = CRON_RETRY_GRACE_DAYS
+): number | null => {
+  const ascending = [...thresholds].sort((a, b) => a - b)
+  const threshold = ascending.find((t) => daysUntil <= t)
+  if (threshold === undefined) return null
+  return daysUntil > threshold - graceDays ? threshold : null
+}
+
+export type CronDueLeaseAlert = LeaseAlert & { thresholdDays: number }
+
+/** Alerts due today under the threshold + retry-grace rules above. */
+export const getCronDueLeaseAlerts = (
+  records: PortfolioLeaseRow[],
+  now: Date = new Date(),
+  thresholds: readonly number[] = CRON_ALERT_THRESHOLDS_DAYS,
+  graceDays: number = CRON_RETRY_GRACE_DAYS
+): CronDueLeaseAlert[] => {
+  const maxWindow = Math.max(...thresholds)
+  return getUpcomingLeaseAlerts(records, maxWindow, now).flatMap((alert) => {
+    const thresholdDays = resolveCronThreshold(
+      alert.daysUntil,
+      thresholds,
+      graceDays
+    )
+    return thresholdDays === null ? [] : [{ ...alert, thresholdDays }]
+  })
+}
+
 export const calculatePortfolioMetrics = (
   records: PortfolioLeaseRow[]
 ): PortfolioMetrics => {
