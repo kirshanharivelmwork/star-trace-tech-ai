@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Placeholders only. Nothing here talks to a real service: tests mock
+      # Supabase/Stripe/Resend/Anthropic and `next build` only needs the
+      # variables to exist so NEXT_PUBLIC_* values can be inlined.
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      NEXT_PUBLIC_APP_URL: https://placeholder.example.com
+      NEXT_PUBLIC_STRIPE_PRO_PRICE_ID: price_placeholder
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+      STRIPE_SECRET_KEY: sk_test_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_placeholder
+      RESEND_API_KEY: re_placeholder
+      RESEND_FROM_EMAIL: alerts@placeholder.example.com
+      ANTHROPIC_API_KEY: sk-ant-placeholder
+      CRON_SECRET: placeholder-cron-secret
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
