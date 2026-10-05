@@ -8,6 +8,7 @@ import {
   type PortfolioLeaseRow,
 } from "@/lib/lease/portfolio-metrics"
 import { calendarDaysUntil, parseIsoDate } from "@/lib/enterprise/metrics"
+import { escapeHtml } from "@/lib/email/escape"
 import { getAppUrl, getResendFromAddress } from "@/lib/email/from"
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -161,7 +162,7 @@ const wasDispatched = async (
 /**
  * Records a dispatch. Idempotent: backed by the unique index on
  * (organization_id, alert_type, threshold_days, lease_id, abstract_id)
- * (NULLS NOT DISTINCT — see migration 20261005) and ON CONFLICT DO NOTHING
+ * (NULLS NOT DISTINCT — see migration 20261005010000) and ON CONFLICT DO NOTHING
  * via `ignoreDuplicates`, so concurrent/repeated runs never error or
  * double-insert.
  */
@@ -259,13 +260,6 @@ const sendEmail = async (
     }
   }
 }
-
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
 
 const DEADLINE_LABELS: Record<LeaseAlert["type"], string> = {
   expiration: "Lease Expiration",

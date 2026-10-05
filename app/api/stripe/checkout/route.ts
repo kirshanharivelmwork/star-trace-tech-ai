@@ -39,6 +39,15 @@ export async function POST(request: Request) {
     return new Response("Workspace is not ready.", { status: 403 })
   }
 
+  // Same rule as the billing portal (openBillingPortal): only owners and
+  // admins may start or change a subscription for the workspace.
+  if (!org.canManageOrg) {
+    return new Response(
+      "Only workspace owners and admins can manage billing.",
+      { status: 403 }
+    )
+  }
+
   const origin = getAppUrl() || new URL(request.url).origin
 
   const supabaseAdmin = createAdminClient()
@@ -78,11 +87,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: session.url })
   } catch (error) {
     console.error("[Stripe Checkout Error]:", error)
-    return new Response(
-      error instanceof Error
-        ? error.message
-        : "Failed to create checkout session.",
-      { status: 500 }
-    )
+    return new Response("Failed to create checkout session.", { status: 500 })
   }
 }

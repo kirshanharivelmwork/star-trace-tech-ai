@@ -15,8 +15,10 @@ const copyCookiesAndCacheHeaders = (
   from: NextResponse,
   to: NextResponse
 ): NextResponse => {
+  // Pass the whole cookie (path, maxAge, httpOnly, sameSite, secure…), not
+  // just name/value, or refreshed auth cookies lose their attributes.
   from.cookies.getAll().forEach((cookie) => {
-    to.cookies.set(cookie.name, cookie.value)
+    to.cookies.set(cookie)
   })
   from.headers.forEach((value, key) => {
     const lower = key.toLowerCase()

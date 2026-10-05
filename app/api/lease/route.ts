@@ -2,17 +2,18 @@ import { anthropic } from "@ai-sdk/anthropic"
 import { revalidatePath } from "next/cache"
 import { streamObject } from "ai"
 
+import { LLM_MODEL_ID } from "@/lib/ai/model"
 import { hydrateCanonicalLease } from "@/lib/lease/hydrate"
+import { MAX_LEASE_REQUEST_BYTES } from "@/lib/lease/limits"
+import { validateLeaseUpload } from "@/lib/lease/validate"
 import { getOrgContext } from "@/lib/org/context"
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit"
 import { FREE_LEASE_ABSTRACT_LIMIT } from "@/lib/stripe/constants"
-import { getOrgSubscription } from "@/lib/stripe/server"
 import { createClient } from "@/lib/supabase/server"
-import { leaseAbstractSchema, type LeaseAnalysisInput } from "./schema"
+import { leaseAbstractSchema } from "./schema"
 import type { PortfolioLeaseAbstract } from "@/lib/lease/portfolio-metrics"
 
 export const maxDuration = 60
-
-const MODEL_ID = "claude-sonnet-4-6"
 
 const SYSTEM_PROMPT = `You are an expert commercial real estate attorney acting as a Commercial Lease Abstractor.
 
@@ -20,8 +21,8 @@ Carefully read the entire attached PDF lease document and extract every requeste
 
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("[Lease API Error]: ANTHROPIC_API_KEY is missing in .env.local")
-    return new Response("ANTHROPIC_API_KEY is missing in .env.local", {
+    console.error("[Lease API Error]: ANTHROPIC_API_KEY is not configured")
+    return new Response("Lease analysis is not configured on the server.", {
       status: 500,
     })
   }
@@ -33,7 +34,6 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser()
 
   if (authError || !user) {
-    console.error("[Lease API Error]: unauthenticated request to /api/lease")
     return new Response("Unauthorized. Please sign in to analyze a lease.", {
       status: 401,
     })
@@ -52,44 +52,74 @@ export async function POST(req: Request) {
     })
   }
 
-  const subscription = await getOrgSubscription(org.orgId, org.userId)
+  const rateLimit = await checkRateLimit(supabase, "lease", org.orgId)
+  if (rateLimit !== "ok") return rateLimitResponse(rateLimit, "lease")
 
-  if (!subscription.isPro) {
-    const { count, error: countError } = await supabase
-      .from("lease_abstracts")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", org.orgId)
+  // Cheap rejection from the declared length before buffering the body; the
+  // header can be absent/lying, so the real length is re-checked below.
+  const declaredLength = Number(req.headers.get("content-length") ?? "0")
+  if (declaredLength > MAX_LEASE_REQUEST_BYTES) {
+    return new Response("File is too large.", { status: 413 })
+  }
 
-    if (countError) {
-      console.error(
-        "[Lease API Error] failed to count existing abstracts:",
-        countError.message
-      )
-    } else if ((count ?? 0) >= FREE_LEASE_ABSTRACT_LIMIT) {
-      console.warn(
-        `[Lease API] Blocked upload for org ${org.orgId}: free limit (${FREE_LEASE_ABSTRACT_LIMIT}) reached.`
-      )
-      return new Response(
-        `You've reached the free plan limit of ${FREE_LEASE_ABSTRACT_LIMIT} lease abstracts. Upgrade to Pro for unlimited abstracts.`,
-        { status: 402 }
-      )
+  const rawBody = await req.text()
+  if (rawBody.length > MAX_LEASE_REQUEST_BYTES) {
+    return new Response("File is too large.", { status: 413 })
+  }
+
+  let parsedBody: unknown
+  try {
+    parsedBody = JSON.parse(rawBody)
+  } catch {
+    return new Response("Invalid JSON body.", { status: 400 })
+  }
+
+  const validation = validateLeaseUpload(parsedBody, org.orgId)
+  if (!validation.ok) {
+    return new Response(validation.message, { status: validation.status })
+  }
+  const { fileName, storagePath, fileBase64 } = validation.value
+
+  // Atomically reserve one analysis slot (advisory-locked in Postgres, counts
+  // saved abstracts + in-flight claims) so concurrent uploads can't all pass
+  // a "count < limit" check. NULL means the free limit is reached.
+  const { data: claimId, error: claimError } = await supabase.rpc(
+    "claim_lease_analysis",
+    { p_org_id: org.orgId, p_free_limit: FREE_LEASE_ABSTRACT_LIMIT }
+  )
+
+  if (claimError) {
+    console.error("[Lease API Error] claim_lease_analysis:", claimError.message)
+    return new Response("Service temporarily unavailable. Please try again.", {
+      status: 503,
+    })
+  }
+
+  if (!claimId) {
+    console.warn(
+      `[Lease API] Blocked upload for org ${org.orgId}: free limit (${FREE_LEASE_ABSTRACT_LIMIT}) reached.`
+    )
+    return new Response(
+      `You've reached the free plan limit of ${FREE_LEASE_ABSTRACT_LIMIT} lease abstracts. Upgrade to Pro for unlimited abstracts.`,
+      { status: 402 }
+    )
+  }
+
+  const releaseClaim = async () => {
+    const { error } = await supabase.rpc("release_lease_analysis_claim", {
+      p_claim_id: claimId,
+    })
+    if (error) {
+      console.error("[Lease API Error] release claim:", error.message)
     }
   }
 
   try {
-    const { fileName, storagePath, fileBase64 }: LeaseAnalysisInput =
-      await req.json()
-
-    if (!fileName || !fileBase64) {
-      return new Response("Missing fileName or file data in request body.", {
-        status: 400,
-      })
-    }
-
     const result = streamObject({
-      model: anthropic(MODEL_ID),
+      model: anthropic(LLM_MODEL_ID),
       schema: leaseAbstractSchema,
       system: SYSTEM_PROMPT,
+      abortSignal: req.signal,
       messages: [
         {
           role: "user",
@@ -107,16 +137,17 @@ export async function POST(req: Request) {
           ],
         },
       ],
-      onError: ({ error }) => {
+      onError: async ({ error }) => {
         console.error("[Lease API Error] streaming error:", error)
+        await releaseClaim()
       },
       onFinish: async ({ object, error }) => {
-        if (error || !object) {
-          console.error("[Lease API Error] schema validation failed:", error)
-          return
-        }
-
         try {
+          if (error || !object) {
+            console.error("[Lease API Error] schema validation failed:", error)
+            return
+          }
+
           const { data: inserted, error: insertError } = await supabase
             .from("lease_abstracts")
             .insert({
@@ -155,6 +186,9 @@ export async function POST(req: Request) {
             "[Lease API Error] failed to persist abstract:",
             persistError
           )
+        } finally {
+          // The saved row now counts toward the limit; drop the reservation.
+          await releaseClaim()
         }
       },
     })
@@ -162,11 +196,9 @@ export async function POST(req: Request) {
     return result.toTextStreamResponse()
   } catch (error) {
     console.error("[Lease API Error]:", error)
-    return new Response(
-      error instanceof Error
-        ? error.message
-        : "Unknown error while analyzing the lease.",
-      { status: 500 }
-    )
+    await releaseClaim()
+    return new Response("Failed to analyze the lease. Please try again.", {
+      status: 500,
+    })
   }
 }

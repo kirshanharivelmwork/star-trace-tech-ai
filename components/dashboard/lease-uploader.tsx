@@ -17,6 +17,7 @@ import { useUser } from "@/components/providers/user-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { openBillingPortal } from "@/lib/org/actions"
+import { MAX_LEASE_PDF_BYTES } from "@/lib/lease/limits"
 import { FREE_LEASE_ABSTRACT_LIMIT } from "@/lib/stripe/constants"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -259,7 +260,7 @@ export const LeaseUploader = ({
 
   const onDrop = useCallback(
     async (acceptedFiles: File[], rejections: FileRejection[]) => {
-      if (!user) {
+      if (!user || !orgId) {
         setPhase("error")
         setUploadError("Please sign in to analyze a lease.")
         return
@@ -274,8 +275,15 @@ export const LeaseUploader = ({
       }
 
       if (rejections.length > 0) {
+        const tooLarge = rejections.some((rejection) =>
+          rejection.errors.some((error) => error.code === "file-too-large")
+        )
         setPhase("error")
-        setUploadError("Only a single PDF file is accepted.")
+        setUploadError(
+          tooLarge
+            ? `That PDF is too large. The maximum size is ${(MAX_LEASE_PDF_BYTES / 1_000_000).toFixed(1)} MB.`
+            : "Only a single PDF file is accepted."
+        )
         return
       }
 
@@ -294,7 +302,9 @@ export const LeaseUploader = ({
         // Still persist the original file in Supabase Storage for record
         // keeping / auditing, and to link it from the lease_abstracts row.
         const supabase = createClient()
-        const storagePath = `${crypto.randomUUID()}-${file.name}`
+        // Must be `<orgId>/<uuid>.pdf`: the private `leases` bucket policy and
+        // /api/lease both scope objects by the first path segment.
+        const storagePath = `${orgId}/${crypto.randomUUID()}.pdf`
 
         const { error: uploadStorageError } = await supabase.storage
           .from(LEASES_BUCKET)
@@ -320,12 +330,13 @@ export const LeaseUploader = ({
         )
       }
     },
-    [submit, user, hasReachedFreeLimit]
+    [submit, user, orgId, hasReachedFreeLimit]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { "application/pdf": [".pdf"] },
+    maxSize: MAX_LEASE_PDF_BYTES,
     maxFiles: 1,
     disabled: isBusy || isSignedOut || showUpgradePrompt,
   })

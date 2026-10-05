@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 import { writeAuditLog } from "@/lib/audit/write"
+import { escapeHtml } from "@/lib/email/escape"
 import { getAppUrl, getResendFromAddress } from "@/lib/email/from"
 import { getOrgContext, requireManageOrg } from "@/lib/org/context"
 import { normalizeEmail } from "@/lib/org/scope"
@@ -184,7 +185,8 @@ export const inviteOrgMember = async (
           from: getResendFromAddress(),
           to: email,
           subject: `You're invited to ${context.orgName} on StarFlow`,
-          html: `<p>You've been invited to join <strong>${context.orgName}</strong> as a ${role}.</p>
+          // orgName is user-controlled: escape it before putting it in HTML.
+          html: `<p>You've been invited to join <strong>${escapeHtml(context.orgName)}</strong> as a ${role}.</p>
 <p>Sign up or sign in with this email at <a href="${getAppUrl()}/login">${getAppUrl()}/login</a> to accept.</p>`,
         })
       } catch (emailError) {

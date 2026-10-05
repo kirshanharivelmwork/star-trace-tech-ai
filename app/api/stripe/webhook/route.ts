@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic"
 
 /**
  * Billing is one row per organization: `subscriptions.organization_id` has a
- * unique index (migration 20261005_subscriptions_org_unique.sql), which is
+ * unique index (migration 20261005020000_subscriptions_org_unique.sql), which is
  * the `onConflict` target of every write below. All writes are upserts of
  * the *current* Stripe state, so replays and out-of-order delivery converge
  * on the same row.
