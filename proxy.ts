@@ -8,6 +8,7 @@ const isPublicPath = (pathname: string): boolean => {
   if (pathname.startsWith("/auth/callback")) return true
   if (pathname.startsWith("/api/stripe/webhook")) return true
   if (pathname.startsWith("/api/cron/alerts")) return true
+  if (pathname === "/api/health") return true
   return false
 }
 

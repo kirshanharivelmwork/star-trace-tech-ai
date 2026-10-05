@@ -378,8 +378,8 @@ export const CRON_ALERT_THRESHOLDS_DAYS = [90, 60, 30] as const
  * Same underlying parsing as `getUpcomingLeaseAlerts`, but filtered down to
  * the exact day-count thresholds the cron job cares about, so it fires
  * once per lease per threshold (day 90, day 60, day 30) instead of once
- * per day for the entire window — that de-duplication matters once this is
- * wired to a real email provider.
+ * per day for the entire window. The daily cron (`/api/cron/alerts`) emails
+ * through Resend and uses `getCronDueLeaseAlerts` so a missed run is retried.
  */
 export const getExactThresholdLeaseAlerts = (
   records: PortfolioLeaseRow[],
