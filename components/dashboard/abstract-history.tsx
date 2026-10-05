@@ -36,18 +36,17 @@ export const AbstractHistory = ({
   const [records, setRecords] = useState<LeaseAbstractRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const canFetch = Boolean(user && org?.orgId)
+  const visibleRecords = canFetch ? records : []
+  const visibleError = canFetch ? error : null
 
   useEffect(() => {
     // Wait for the auth state to resolve before deciding whether to fetch —
     // avoids a flash of "no leases" for a user who is actually signed in.
     if (isUserLoading) return
 
-    if (!user || !org?.orgId) {
-      setRecords([])
-      setIsLoading(false)
-      setError(null)
-      return
-    }
+    // Signed-out / org-less state is derived at render time (see `canFetch`).
+    if (!user || !org?.orgId) return
 
     let isCancelled = false
 
@@ -89,7 +88,7 @@ export const AbstractHistory = ({
 
       <CardContent className="flex-1 overflow-hidden px-0">
         <ScrollArea className="h-full px-4">
-          {isUserLoading || isLoading ? (
+          {isUserLoading || (canFetch && isLoading) ? (
             <div className="flex flex-col gap-3 pb-4">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div
@@ -107,18 +106,18 @@ export const AbstractHistory = ({
               <LogIn className="size-5" />
               <p>Sign in to view your lease history.</p>
             </div>
-          ) : error ? (
+          ) : visibleError ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
+              {visibleError}
             </div>
-          ) : records.length === 0 ? (
+          ) : visibleRecords.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
               <FileText className="size-5" />
               <p>No leases analyzed yet.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-2 pb-4">
-              {records.map((record) => {
+              {visibleRecords.map((record) => {
                 const isSelected = record.id === selectedId
 
                 return (

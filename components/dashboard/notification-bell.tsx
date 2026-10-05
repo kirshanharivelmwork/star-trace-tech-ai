@@ -36,11 +36,8 @@ export const NotificationBell = () => {
   useEffect(() => {
     if (isUserLoading) return
 
-    if (!user || !org?.orgId) {
-      setAlerts([])
-      setIsLoading(false)
-      return
-    }
+    // Signed-out / org-less state is derived at render time (see `canFetch`).
+    if (!user || !org?.orgId) return
 
     let isCancelled = false
 
@@ -79,7 +76,10 @@ export const NotificationBell = () => {
 
   if (!user) return null
 
-  const count = alerts.length
+  const canFetch = Boolean(org?.orgId)
+  const visibleAlerts = canFetch ? alerts : []
+  const showLoading = canFetch && isLoading
+  const count = visibleAlerts.length
 
   return (
     <Popover>
@@ -108,17 +108,17 @@ export const NotificationBell = () => {
         </div>
 
         <div className="max-h-80 overflow-y-auto p-1">
-          {isLoading ? (
+          {showLoading ? (
             <p className="px-3 py-4 text-sm text-muted-foreground">
               Loading…
             </p>
-          ) : alerts.length === 0 ? (
+          ) : visibleAlerts.length === 0 ? (
             <p className="px-3 py-4 text-sm text-muted-foreground">
               No critical dates in the next {ALERT_WINDOW_DAYS} days.
             </p>
           ) : (
             <ul className="flex flex-col gap-0.5">
-              {alerts.map((alert) => (
+              {visibleAlerts.map((alert) => (
                 <li
                   key={alert.id}
                   className="flex items-start gap-2 rounded-md px-2 py-2 text-sm hover:bg-muted/60"

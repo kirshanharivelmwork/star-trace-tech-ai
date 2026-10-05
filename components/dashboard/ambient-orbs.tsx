@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
 
 const ORBS = [
   {
@@ -27,12 +27,15 @@ const ORBS = [
  * Client-only after mount so CSS animation transforms cannot desync
  * from the server HTML (React hydration #441).
  */
-export const AmbientOrbs = () => {
-  const [mounted, setMounted] = useState(false)
+const subscribeNoop = () => () => {}
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+export const AmbientOrbs = () => {
+  // false during SSR/hydration, true once mounted on the client.
+  const mounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false
+  )
 
   if (!mounted) return null
 

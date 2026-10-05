@@ -81,12 +81,18 @@ export const PortfolioAnalytics = async () => {
   const waltYears = calculateWaltYears(active, now)
   const needsReviewCount = leases.filter((lease) => lease.needs_review).length
 
-  let upcomingExpirations = 0
+  const upcomingExpirations = active.filter((lease) => {
+    const expiration = parseIsoDate(lease.end_date)
+    if (!expiration) return false
+    return (
+      expiration.getTime() >= now.getTime() &&
+      expiration.getTime() <= windowEnd.getTime()
+    )
+  }).length
   const criticalDates = active
     .map((lease) => {
       const expiration = parseIsoDate(lease.end_date)
       if (!expiration || expiration.getTime() < now.getTime()) return null
-      if (expiration.getTime() <= windowEnd.getTime()) upcomingExpirations += 1
       const property = lease.property_id
         ? propertyById.get(lease.property_id)
         : undefined

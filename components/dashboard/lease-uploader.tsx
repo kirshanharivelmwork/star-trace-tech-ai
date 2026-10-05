@@ -34,11 +34,20 @@ type UsageState = {
   usedCount: number
 }
 
-const IDLE_USAGE_STATE: UsageState = {
+const SIGNED_OUT_USAGE_STATE: UsageState = {
+  isLoading: false,
+  isPro: false,
+  usedCount: 0,
+}
+
+const LOADING_USAGE_STATE: UsageState = {
   isLoading: true,
   isPro: false,
   usedCount: 0,
 }
+
+/** Usage result tagged with the org it was fetched for. */
+type FetchedUsage = { orgId: string; isPro: boolean; usedCount: number }
 
 export type LeaseAnalysisState = {
   fileName: string | null
@@ -88,6 +97,27 @@ const readFileAsBase64 = (file: File) =>
 
 type UploadPhase = "idle" | "uploading" | "error"
 
+const fetchUsage = async (orgId: string): Promise<FetchedUsage> => {
+  const supabase = createClient()
+  const [{ count }, { data: subscriptionRow }] = await Promise.all([
+    supabase
+      .from("lease_abstracts")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId),
+    supabase
+      .from("subscriptions")
+      .select("status")
+      .eq("organization_id", orgId)
+      .maybeSingle<{ status: string }>(),
+  ])
+
+  return {
+    orgId,
+    isPro: Boolean(subscriptionRow && PRO_STATUSES.has(subscriptionRow.status)),
+    usedCount: count ?? 0,
+  }
+}
+
 export const LeaseUploader = ({
   onStateChange,
   onAnalysisComplete,
@@ -97,44 +127,44 @@ export const LeaseUploader = ({
   const [phase, setPhase] = useState<UploadPhase>("idle")
   const [fileName, setFileName] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [usage, setUsage] = useState<UsageState>(IDLE_USAGE_STATE)
+  const [fetchedUsage, setFetchedUsage] = useState<FetchedUsage | null>(null)
   const [isRedirectingToCheckout, setIsRedirectingToCheckout] =
     useState(false)
 
   // Billing gate (UX only — app/api/lease/route.ts enforces this
   // authoritatively). Re-run after every completed analysis so the count
   // updates live without a page reload.
+  const orgId = org?.orgId
+  const hasUsageScope = Boolean(user && orgId)
+  // Derived at render time: signed-out, still loading (nothing fetched for
+  // the current org yet), or the fetched result.
+  const usage: UsageState = !hasUsageScope
+    ? SIGNED_OUT_USAGE_STATE
+    : fetchedUsage && fetchedUsage.orgId === orgId
+      ? {
+          isLoading: false,
+          isPro: fetchedUsage.isPro,
+          usedCount: fetchedUsage.usedCount,
+        }
+      : LOADING_USAGE_STATE
+
   const refreshUsage = useCallback(async () => {
-    if (!user || !org?.orgId) {
-      setUsage({ isLoading: false, isPro: false, usedCount: 0 })
-      return
-    }
-
-    setUsage((previous) => ({ ...previous, isLoading: true }))
-
-    const supabase = createClient()
-    const [{ count }, { data: subscriptionRow }] = await Promise.all([
-      supabase
-        .from("lease_abstracts")
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", org.orgId),
-      supabase
-        .from("subscriptions")
-        .select("status")
-        .eq("organization_id", org.orgId)
-        .maybeSingle<{ status: string }>(),
-    ])
-
-    setUsage({
-      isLoading: false,
-      isPro: Boolean(subscriptionRow && PRO_STATUSES.has(subscriptionRow.status)),
-      usedCount: count ?? 0,
-    })
-  }, [user, org?.orgId])
+    if (!user || !orgId) return
+    setFetchedUsage(await fetchUsage(orgId))
+  }, [user, orgId])
 
   useEffect(() => {
-    refreshUsage()
-  }, [refreshUsage])
+    if (!user || !orgId) return
+
+    let isCancelled = false
+    fetchUsage(orgId).then((result) => {
+      if (!isCancelled) setFetchedUsage(result)
+    })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [user, orgId])
 
   useEffect(() => {
     if (typeof window === "undefined") return

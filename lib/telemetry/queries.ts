@@ -149,7 +149,6 @@ export const fetchPortfolioIntelligence = async (
 
   const quarterlyFunnel = quarterlyExpirationFunnel(activeLeases, now)
 
-  const leaseById = new Map(leases.map((lease) => [lease.id, lease]))
   const telemetryByLease = new Map(
     telemetry
       .filter((row) => row.lease_id)
